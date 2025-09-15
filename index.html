@@ -27,6 +27,7 @@
 
     <!-- App -->
     <section id="app" class="hidden">
+      <!-- Main form -->
       <section class="card">
         <div class="row">
           <label>Company
@@ -56,10 +57,10 @@
         </label>
 
         <div class="row">
-          <label>From (for Used/Move)
+          <label>From (for Used / Move)
             <select id="fromLoc"></select>
           </label>
-          <label>To (for Receive/Move)
+          <label>To (for Receive / Move)
             <select id="toLoc"></select>
           </label>
         </div>
@@ -77,6 +78,8 @@
           <button id="btnSubmit" type="button">Submit</button>
           <button id="btnCount" type="button">Count Mode</button>
           <button id="btnBackorder" type="button">Backorder</button>
+          <button id="btnBulk" type="button">Multi-Entry</button>
+          <button id="btnHistory" type="button">History</button>
         </div>
         <div class="small muted" id="sync">Sync: idle</div>
       </section>
@@ -94,6 +97,67 @@
         <div class="row" style="margin-top:8px">
           <button id="btnSaveCounts" type="button">Save Counts</button>
         </div>
+      </section>
+
+      <!-- Multi-Entry (bulk) -->
+      <section id="bulkPanel" class="card hidden">
+        <div class="split">
+          <strong>Multi-Entry (add several lines, submit once)</strong>
+          <div class="inline">
+            <button id="bulkAdd" type="button">Add line</button>
+            <button id="bulkClose" type="button">Close</button>
+          </div>
+        </div>
+
+        <table id="bulkTable" style="width:100%;border-collapse:collapse;margin-top:8px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px">PartID</th>
+              <th style="text-align:left;padding:8px">Action</th>
+              <th style="text-align:left;padding:8px">From</th>
+              <th style="text-align:left;padding:8px">To</th>
+              <th style="text-align:right;padding:8px">Qty</th>
+              <th style="padding:8px"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="row" style="margin-top:8px">
+          <button id="bulkSubmit" type="button">Submit All</button>
+        </div>
+      </section>
+
+      <!-- History by Technician -->
+      <section id="historyPanel" class="card hidden">
+        <div class="split">
+          <strong>History by Technician</strong>
+          <button id="historyClose" type="button">Close</button>
+        </div>
+
+        <div class="row">
+          <label>Technician
+            <select id="historyTech"></select>
+          </label>
+          <label>Company (optional)
+            <input id="historyCompany" placeholder="e.g. Main" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Filter PartID (optional)
+            <input id="historyPart" placeholder="e.g. 639458345" />
+          </label>
+          <label>Max rows
+            <input id="historyLimit" type="number" min="10" step="10" value="100" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="historyLoad" type="button">Load History</button>
+        </div>
+
+        <div id="historyList" style="margin-top:8px"></div>
       </section>
 
       <!-- Recent Actions -->
