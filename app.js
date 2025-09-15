@@ -1,6 +1,6 @@
 /*************** FIXED CONNECTION (no UI fields) ***************/
-const BASE_URL = "https://script.google.com/macros/s/AKfycbzYUDoESRUzfbXWErt7uk021OwZK3LzUCL9sEFkbc39HRDz8Qce4218v-WleoS1nroiKw/exec"; // <-- Apps Script Web App URL (ends with /exec)
-const API_KEY  = "thebluedogisfat"; // <-- must match Settings!API_KEY in your Sheet
+const BASE_URL = "https://script.google.com/macros/s/AKfycbzYUDoESRUzfbXWErt7uk021OwZK3LzUCL9sEFkbc39HRDz8Qce4218v-WleoS1nroiKw/exec"; // Apps Script Web App URL (/exec)
+const API_KEY  = "thebluedogisfat"; // must match Settings!API_KEY
 /****************************************************************/
 
 // Local storage helpers
@@ -81,9 +81,13 @@ async function loadLocs() {
     LS.set(K.locs, ['Office', 'Shop', 'CrashBox', 'Van1', 'Van2', 'Van3', 'Van4']);
   }
   const locs = LS.get(K.locs, []);
-  el('fromLoc').innerHTML = locs.map(l => `<option>${l}</option>`).join('');
-  el('toLoc').innerHTML = locs.map(l => `<option>${l}</option>`).join('');
+  const opts = ['<option value="" selected disabled>Select location…</option>']
+    .concat(locs.map(l => `<option>${l}</option>`))
+    .join('');
+  el('fromLoc').innerHTML = opts;
+  el('toLoc').innerHTML   = opts;
 }
+
 async function loadParts() {
   try {
     const j = await apiGET('parts'); // {parts:[{PartID}]}
@@ -142,6 +146,67 @@ function prependRecent(text) {
   el('recent').prepend(li);
 }
 
+// === Multi-entry (bulk) helpers ===
+function actionSelectHtml(val='used'){
+  const opts = ['used','received','moved']
+    .map(a=>`<option value="${a}" ${a===val?'selected':''}>${a}</option>`).join('');
+  return `<select data-field="action">${opts}</select>`;
+}
+function locSelectHtml(attr){
+  const locs = LS.get(K.locs, []);
+  const opts = ['<option value="" selected disabled>Select location…</option>']
+    .concat(locs.map(l => `<option value="${l}">${l}</option>`)).join('');
+  return `<select data-field="${attr}">${opts}</select>`;
+}
+function bulkRowHtml(){
+  return `
+    <tr>
+      <td style="padding:6px">
+        <input data-field="partId" list="partsList" placeholder="PartID"/>
+      </td>
+      <td style="padding:6px">${actionSelectHtml()}</td>
+      <td style="padding:6px">${locSelectHtml('fromLoc')}</td>
+      <td style="padding:6px">${locSelectHtml('toLoc')}</td>
+      <td style="padding:6px;text-align:right">
+        <input data-field="qty" type="number" min="0.01" step="0.01" style="width:110px;text-align:right"/>
+      </td>
+      <td style="padding:6px">
+        <button type="button" data-action="remove">✕</button>
+      </td>
+    </tr>`;
+}
+
+// === History helpers ===
+async function loadTechs(){
+  try{
+    const j = await apiGET('techs'); // {techs:[]}
+    const sel = el('historyTech');
+    const techs = j.techs || [];
+    const me = (el('tech').value||'').trim();
+    const ordered = me && techs.includes(me) ? [me, ...techs.filter(t=>t!==me)] : techs;
+    sel.innerHTML = ordered.map(t=>`<option>${t}</option>`).join('');
+  }catch{/* ignore if none yet */}
+}
+function renderHistory(items){
+  if (!items || !items.length){
+    el('historyList').innerHTML = `<div class="muted small">No records.</div>`;
+    return;
+  }
+  const rows = items.map(it=>{
+    const when = it.ts ? new Date(it.ts).toLocaleString() : '';
+    const move =
+      it.action==='moved'    ? `${it.qty} ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})` :
+      it.action==='used'     ? `${it.qty} ${it.partId} (from ${it.fromLoc||'—'})` :
+      it.action==='received' ? `${it.qty} ${it.partId} (to ${it.toLoc||'—'})` :
+      it.action==='count'    ? `count Δ=${it.qty} ${it.partId} @ ${it.fromLoc||'loc'}` :
+      it.action==='backorder'? `BO ${it.qty} ${it.partId}` : `${it.qty} ${it.partId}`;
+    const extra = [it.company, it.jobCode].filter(Boolean).join(' • ');
+    const note = it.note ? ` — ${it.note}` : '';
+    return `<li><strong>${when}</strong> — ${move} <span class="muted small">${extra}</span>${note}</li>`;
+  }).join('');
+  el('historyList').innerHTML = `<ul id="recent">${rows}</ul>`;
+}
+
 // Boot
 window.addEventListener('DOMContentLoaded', async () => {
   setNet();
@@ -174,37 +239,50 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadLocs();
   await loadParts();
 
-  // Action visibility
+  // Action visibility + reset hidden fields
   const vis = () => {
     const a = el('action').value;
-    el('fromLoc').parentElement.parentElement.style.display = (a === 'used' || a === 'moved') ? 'block' : 'none';
-    el('toLoc').parentElement.parentElement.style.display   = (a === 'received' || a === 'moved') ? 'block' : 'none';
+    const fromWrap = el('fromLoc').closest('label');
+    const toWrap   = el('toLoc').closest('label');
+
+    fromWrap.style.display = (a === 'used' || a === 'moved') ? 'block' : 'none';
+    toWrap.style.display   = (a === 'received' || a === 'moved') ? 'block' : 'none';
+
+    if (a === 'used')      el('toLoc').value = "";
+    else if (a === 'received') el('fromLoc').value = "";
   };
   el('action').addEventListener('change', vis); vis();
 
-  // Submit movement
+  // Submit movement (with action-specific validation)
   el('btnSubmit').addEventListener('click', async () => {
+    const action  = el('action').value;
+    const fromLoc = el('fromLoc').value;
+    const toLoc   = el('toLoc').value;
+
     const payload = {
       kind: 'movement',
       company: el('company').value.trim(),
       tech: el('tech').value.trim(),
-      action: el('action').value,              // used | received | moved
+      action,
       partId: el('partId').value.trim(),
       qty: String(parseFloat(el('qty').value) || 0),
-      fromLoc: el('action').value !== 'received' ? el('fromLoc').value : '',
-      toLoc:   el('action').value !== 'used'     ? el('toLoc').value   : '',
+      fromLoc: action !== 'received' ? fromLoc : '',
+      toLoc:   action !== 'used'     ? toLoc   : '',
       jobCode: el('jobCode').value.trim(),
       note: el('note').value.trim(),
       requestId: (crypto.randomUUID ? crypto.randomUUID() : 'r-' + Date.now()),
     };
+
     if (!payload.company || !payload.tech || !payload.partId || !(parseFloat(payload.qty) > 0)) {
-      alert('Fill Company, Tech, PartID, Quantity.'); return;
+      alert('Fill Company, Tech, PartID, and Quantity.'); return;
     }
-    // enqueue then flush
-    qPush({ api_key: API_KEY, ...payload }); // queue stores api_key too
+    if (action === 'used' && !fromLoc)     { alert('Select the location the part is being USED FROM.'); return; }
+    if (action === 'received' && !toLoc)   { alert('Select the destination location to RECEIVE INTO.'); return; }
+    if (action === 'moved' && (!fromLoc || !toLoc)) { alert('Select BOTH From and To locations for a Move.'); return; }
+
+    qPush(payload);
     prependRecent(`${payload.tech} ${payload.action} ${payload.qty} × ${payload.partId} (${payload.fromLoc || '—'}→${payload.toLoc || '—'})`);
     await flushQueue();
-    // light reset
     el('qty').value = '';
     el('note').value = '';
   });
@@ -226,7 +304,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!payload.company || !payload.partId || !(parseFloat(payload.qty) > 0)) {
       alert('Pick a PartID and quantity.'); return;
     }
-    qPush({ api_key: API_KEY, ...payload });
+    qPush(payload);
     prependRecent(`backorder ${payload.qty} × ${payload.partId}`);
     await flushQueue();
   });
@@ -265,5 +343,83 @@ window.addEventListener('DOMContentLoaded', async () => {
       prependRecent(`${tech} counted ${partId}`);
       el('countPanel').classList.add('hidden');
     } catch (e) { alert('Save failed: ' + e.message); }
+  });
+
+  // === Multi-entry (bulk) ===
+  const bulkPanel = el('bulkPanel');
+  el('btnBulk').addEventListener('click', ()=>{
+    bulkPanel.classList.remove('hidden');
+    if (!el('bulkTable').querySelector('tbody tr')) {
+      el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
+    }
+  });
+  el('bulkClose').addEventListener('click', ()=> bulkPanel.classList.add('hidden'));
+  el('bulkAdd').addEventListener('click', ()=>{
+    el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
+  });
+  el('bulkTable').addEventListener('click', (e)=>{
+    if (e.target.dataset.action==='remove'){
+      const tr = e.target.closest('tr'); if (tr) tr.remove();
+    }
+  });
+  el('bulkSubmit').addEventListener('click', async ()=>{
+    const company = el('company').value.trim();
+    const tech    = el('tech').value.trim();
+    if (!company || !tech){ alert('Company and Technician are required.'); return; }
+    const rows = Array.from(el('bulkTable').querySelectorAll('tbody tr'));
+    if (!rows.length){ alert('Add at least one line.'); return; }
+
+    const items = rows.map(tr=>{
+      const get = name => { const n = tr.querySelector(`[data-field="${name}"]`); return n ? n.value : ''; };
+      const action = get('action') || 'used';
+      const fromLoc = action!=='received' ? get('fromLoc') : '';
+      const toLoc   = action!=='used'     ? get('toLoc')   : '';
+      return {
+        company, tech,
+        action,
+        partId: (get('partId')||'').trim(),
+        qty: String(parseFloat(get('qty')||'0')||0),
+        fromLoc, toLoc,
+        jobCode: el('jobCode').value.trim(),
+        note: el('note').value.trim(),
+        requestId: (crypto.randomUUID ? crypto.randomUUID() : 'r-'+Date.now()+Math.random().toString(16).slice(2))
+      };
+    }).filter(it => it.partId && parseFloat(it.qty)>0);
+
+    if (!items.length){ alert('Fill PartID and Qty on at least one line.'); return; }
+
+    try{
+      await apiPOST({ kind:'batch', items: JSON.stringify(items) }); // requires backend 'batch' route
+      items.forEach(it => prependRecent(`${tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
+      el('bulkTable').querySelector('tbody').innerHTML = '';
+      bulkPanel.classList.add('hidden');
+      await loadParts(); // refresh parts in case new IDs were created
+    }catch(e){
+      alert('Bulk submit failed: '+e.message);
+    }
+  });
+
+  // === History panel ===
+  el('btnHistory').addEventListener('click', async ()=>{
+    el('historyCompany').value = el('company').value;
+    await loadTechs();
+    el('historyPanel').classList.remove('hidden');
+  });
+  el('historyClose').addEventListener('click', ()=> el('historyPanel').classList.add('hidden'));
+  el('historyLoad').addEventListener('click', async ()=>{
+    const tech = el('historyTech').value;
+    if (!tech){ alert('Pick a technician'); return; }
+    const params = {
+      tech,
+      company: (el('historyCompany').value||'').trim(),
+      partId:  (el('historyPart').value||'').trim(),
+      limit:   String(parseInt(el('historyLimit').value||100))
+    };
+    try{
+      const j = await apiGET('history', params);
+      renderHistory(j.items||[]);
+    }catch(e){
+      alert('Failed to load history: '+e.message);
+    }
   });
 });
