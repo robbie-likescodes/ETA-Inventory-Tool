@@ -1,7 +1,7 @@
-/*************** CONFIG (edit API key; base is your deployed URL) ***************/
-const DEFAULT_BASE = "https://script.google.com/macros/s/AKfycbzYUDoESRUzfbXWErt7uk021OwZK3LzUCL9sEFkbc39HRDz8Qce4218v-WleoS1nroiKw/exec";
-const DEFAULT_API_KEY = "YOUR_API_KEY_HERE"; // <- put your Settings!API_KEY value here once
-/*******************************************************************************/
+/*************** FIXED CONNECTION (no UI fields) ***************/
+const BASE_URL = "https://script.google.com/macros/s/AKfycbzYUDoESRUzfbXWErt7uk021OwZK3LzUCL9sEFkbc39HRDz8Qce4218v-WleoS1nroiKw/exec"; // <-- Apps Script Web App URL (ends with /exec)
+const API_KEY  = "thebluedogisfat"; // <-- must match Settings!API_KEY in your Sheet
+/****************************************************************/
 
 // Local storage helpers
 const LS = {
@@ -11,8 +11,6 @@ const LS = {
 };
 
 const K = {
-  base: 'inv.base',
-  key: 'inv.key',
   pin: 'inv.pin',
   tech: 'inv.tech',
   company: 'inv.company',
@@ -31,21 +29,18 @@ window.addEventListener('online', () => { setNet(); flushQueue(); });
 window.addEventListener('offline', setNet);
 
 // API helpers
-function base() { return (el('baseUrl').value || DEFAULT_BASE).trim(); }
-function apiKey() { return (el('apiKey').value || DEFAULT_API_KEY).trim(); }
-
 async function apiGET(route, params = {}) {
   const qs = new URLSearchParams({ route, ...params }).toString();
-  const r = await fetch(`${base()}?${qs}`);
+  const r = await fetch(`${BASE_URL}?${qs}`);
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || 'GET failed');
   return j;
 }
 async function apiPOST(body) {
-  const res = await fetch(base(), {
+  const res = await fetch(BASE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(body),
+    body: new URLSearchParams({ api_key: API_KEY, ...body }),
   });
   const j = await res.json();
   if (!j.ok) throw new Error(j.error || 'POST failed');
@@ -71,7 +66,7 @@ async function flushQueue() {
 // Login
 function isAuthed() { return !!LS.get(K.pin, null); }
 async function login(pin) {
-  await apiPOST({ api_key: apiKey(), kind: 'login', pin });
+  await apiPOST({ kind: 'login', pin });  // Backend checks against Settings!LOGIN_PIN
   LS.set(K.pin, pin);
   return true;
 }
@@ -94,11 +89,10 @@ async function loadParts() {
     const j = await apiGET('parts'); // {parts:[{PartID}]}
     const ids = (j.parts || []).map(p => p.PartID);
     LS.set(K.parts, ids);
-  } catch {
-    // ignore if none yet
-  }
+  } catch { /* ok if none yet */ }
   const ids = LS.get(K.parts, []);
-  el('partsList').innerHTML = ids.map(id => `<option value="${id}">`).join('');
+  const dl = el('partsList');
+  if (dl) dl.innerHTML = ids.map(id => `<option value="${id}">`).join('');
 }
 
 // Count mode rendering
@@ -150,16 +144,6 @@ function prependRecent(text) {
 
 // Boot
 window.addEventListener('DOMContentLoaded', async () => {
-  // Load/save connection config
-  el('baseUrl').value = LS.get(K.base, DEFAULT_BASE);
-  el('apiKey').value = LS.get(K.key, DEFAULT_API_KEY);
-  el('baseUrl').addEventListener('change', () => LS.set(K.base, el('baseUrl').value.trim()));
-  el('apiKey').addEventListener('change', () => LS.set(K.key, el('apiKey').value.trim()));
-  el('btnTest').addEventListener('click', async () => {
-    try { const j = await apiGET('health'); alert('OK: ' + new Date(j.ts).toLocaleString()); }
-    catch (e) { alert('Health check failed: ' + e.message); }
-  });
-
   setNet();
 
   // Login gate
@@ -170,8 +154,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     el('loginMsg').textContent = '';
+    const pin = el('pin').value.trim();
     try {
-      await login(el('pin').value.trim());
+      await login(pin);
       el('gate').classList.add('hidden');
       el('app').classList.remove('hidden');
     } catch (err) {
@@ -193,14 +178,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   const vis = () => {
     const a = el('action').value;
     el('fromLoc').parentElement.parentElement.style.display = (a === 'used' || a === 'moved') ? 'block' : 'none';
-    el('toLoc').parentElement.parentElement.style.display = (a === 'received' || a === 'moved') ? 'block' : 'none';
+    el('toLoc').parentElement.parentElement.style.display   = (a === 'received' || a === 'moved') ? 'block' : 'none';
   };
   el('action').addEventListener('change', vis); vis();
 
   // Submit movement
   el('btnSubmit').addEventListener('click', async () => {
     const payload = {
-      api_key: apiKey(),
       kind: 'movement',
       company: el('company').value.trim(),
       tech: el('tech').value.trim(),
@@ -217,7 +201,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       alert('Fill Company, Tech, PartID, Quantity.'); return;
     }
     // enqueue then flush
-    qPush(payload);
+    qPush({ api_key: API_KEY, ...payload }); // queue stores api_key too
     prependRecent(`${payload.tech} ${payload.action} ${payload.qty} × ${payload.partId} (${payload.fromLoc || '—'}→${payload.toLoc || '—'})`);
     await flushQueue();
     // light reset
@@ -230,7 +214,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     const qty = prompt('Backorder quantity?'); if (!qty) return;
     const expected = prompt('Expected date? (optional YYYY-MM-DD)');
     const payload = {
-      api_key: apiKey(),
       kind: 'backorder',
       company: el('company').value.trim(),
       partId: el('partId').value.trim(),
@@ -243,7 +226,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!payload.company || !payload.partId || !(parseFloat(payload.qty) > 0)) {
       alert('Pick a PartID and quantity.'); return;
     }
-    qPush(payload);
+    qPush({ api_key: API_KEY, ...payload });
     prependRecent(`backorder ${payload.qty} × ${payload.partId}`);
     await flushQueue();
   });
@@ -251,7 +234,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Count mode open/close
   el('btnCount').addEventListener('click', async () => {
     const company = el('company').value.trim();
-    const partId = el('partId').value.trim();
+    const partId  = el('partId').value.trim();
     if (!company || !partId) { alert('Enter Company and PartID first.'); return; }
     try {
       const j = await apiGET('part', { company, partId }); // returns {row}
@@ -265,13 +248,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Save counts (absolute)
   el('btnSaveCounts').addEventListener('click', async () => {
     const company = el('company').value.trim();
-    const partId = el('partId').value.trim();
-    const tech = el('tech').value.trim();
+    const partId  = el('partId').value.trim();
+    const tech    = el('tech').value.trim();
     if (!company || !partId || !tech) { alert('Company, PartID, Tech required.'); return; }
     const inputs = Array.from(el('countTable').querySelectorAll('input[data-loc]'));
     const rows = inputs.map(inp => ({ locId: inp.dataset.loc, qty: Number(inp.value || 0) }));
     const payload = {
-      api_key: apiKey(),
       kind: 'count',
       company, tech, partId,
       counts: JSON.stringify(rows),
@@ -285,4 +267,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { alert('Save failed: ' + e.message); }
   });
 });
-
