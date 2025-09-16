@@ -1,9 +1,9 @@
 /*************** FIXED CONNECTION (update if you redeploy) ***************/
-const BASE_URL = "https://script.google.com/macros/s/AKfycbyRX7byplV740ZDzujHM9cv-TcZCEqq9jzwXzcvZaWHPvXU2GUTSbdu1C_CO61wqAAzAA/exec"; // Apps Script /exec
+const BASE_URL = "https://script.google.com/macros/s/AKfycbwqE8JI_PQFB1P3nqEnRatJg3gPYribXStXX0woTOwxcJUr76lqVRQFoUj0gqX3Kwls/exec"; // Apps Script /exec
 const API_KEY  = "thebluedogisfat"; // must match Settings!API_KEY
 /***********************************************************************/
 
-// Local storage helpers
+/* =============== Local storage helpers =============== */
 const LS = {
   get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
@@ -12,7 +12,7 @@ const LS = {
 const K = {
   pin: 'inv.pin',
   tech: 'inv.tech',
-  company: 'inv.company',
+  company: 'inv.company', // (will become Category once your HTML uses it)
   queue: 'inv.queue',
   parts: 'inv.parts',
   locs: 'inv.locs',
@@ -20,12 +20,12 @@ const K = {
 
 const el = (id) => document.getElementById(id);
 
-// Network chip
+/* =============== Network chip =============== */
 function setNet() { el('net').textContent = navigator.onLine ? 'online' : 'offline'; }
 window.addEventListener('online', () => { setNet(); flushQueue(); });
 window.addEventListener('offline', setNet);
 
-// API helpers
+/* =============== API helpers =============== */
 async function apiGET(route, params = {}) {
   const qs = new URLSearchParams({ route, ...params }).toString();
   const r = await fetch(`${BASE_URL}?${qs}`);
@@ -44,7 +44,7 @@ async function apiPOST(body) {
   return j;
 }
 
-// Queue for offline reliability
+/* =============== Queue for offline reliability =============== */
 function qAll() { return LS.get(K.queue, []); }
 function qPush(p) { const q = qAll(); q.push(p); LS.set(K.queue, q); }
 function qSet(items) { LS.set(K.queue, items); }
@@ -60,7 +60,7 @@ async function flushQueue() {
   el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle';
 }
 
-// Login
+/* =============== Login =============== */
 function isAuthed() { return !!LS.get(K.pin, null); }
 async function login(pin) {
   await apiPOST({ kind: 'login', pin }); // Backend checks Settings!LOGIN_PIN
@@ -68,7 +68,7 @@ async function login(pin) {
   return true;
 }
 
-/* ---------- Lists (no direct DOM writes) ---------- */
+/* =============== Lists (no direct DOM writes) =============== */
 async function loadLocs() {
   try {
     const j = await apiGET('locs');
@@ -89,7 +89,7 @@ async function loadParts() {
   if (dl) dl.innerHTML = ids.map(id => `<option value="${id}">`).join('');
 }
 
-/* ---------- UI helpers ---------- */
+/* =============== UI helpers =============== */
 function locOptionsHtml() {
   const locs = LS.get(K.locs, []);
   return [
@@ -119,7 +119,7 @@ function bulkRowHtml(){
     </tr>`;
 }
 
-// Enforce Used/Received/Moved per row (To=N/A for used, From=N/A for received)
+/* Enforce Used/Received/Moved per row (To=N/A for used, From=N/A for received) */
 function enforceRowAction(tr){
   const action = tr.querySelector('[data-field="action"]').value;
   const fromSel = tr.querySelector('[data-field="fromLoc"]');
@@ -143,7 +143,7 @@ function enforceRowAction(tr){
   }
 }
 
-/* ---------- Count Mode (uses row.locations from backend) ---------- */
+/* =============== Count Mode (uses row.locations from backend) =============== */
 function renderCountTable(row) {
   const locs = LS.get(K.locs, []);
   const hasMap = row && row.locations && typeof row.locations === 'object';
@@ -164,14 +164,14 @@ function renderCountTable(row) {
     `<thead><tr><th style="text-align:left;padding:8px">Location</th><th style="text-align:right;padding:8px">Current</th><th style="text-align:right;padding:8px">New</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
-/* ---------- Recent list ---------- */
+/* =============== Recent list =============== */
 function prependRecent(text) {
   const li = document.createElement('li');
   li.textContent = text;
   el('recent').prepend(li);
 }
 
-/* ---------- History (list + edit/void) ---------- */
+/* =============== History (list + edit/void) =============== */
 async function loadTechs(){
   const sel = el('historyTech');
   sel.disabled = true;
@@ -228,7 +228,9 @@ function confirmDelete(whenStr){
   return confirm(`This was completed on ${whenStr || 'this date'}. Are you sure you want to delete (void) this submission?`);
 }
 
-/* ---------- Boot ---------- */
+/* =============== Boot =============== */
+let submitting = false; // debounce guard
+
 window.addEventListener('DOMContentLoaded', async () => {
   setNet();
 
@@ -286,11 +288,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   el('bulkSubmit').addEventListener('click', async ()=>{
+    if (submitting) return; // drop extra rapid clicks
+    submitting = true;
+    const btn = el('bulkSubmit');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
     const company = el('company').value.trim();
     const tech    = el('tech').value.trim();
-    if (!company || !tech){ alert('Company and Technician are required.'); return; }
+    if (!company || !tech){ alert('Company and Technician are required.'); btn.disabled=false; btn.textContent='Submit All'; submitting=false; return; }
     const rows = Array.from(el('bulkTable').querySelectorAll('tbody tr'));
-    if (!rows.length){ alert('Add at least one line.'); return; }
+    if (!rows.length){ alert('Add at least one line.'); btn.disabled=false; btn.textContent='Submit All'; submitting=false; return; }
+
+    const sharedJob = (el('jobCode') ? el('jobCode').value : '').trim(); // if present in your HTML
+    const sharedNote= (el('note') ? el('note').value : '').trim();
 
     const items = rows.map(tr=>{
       const get = name => { const n = tr.querySelector(`[data-field="${name}"]`); return n ? n.value : ''; };
@@ -315,29 +326,38 @@ window.addEventListener('DOMContentLoaded', async () => {
         partId: (get('partId')||'').trim(),
         qty: String(parseFloat(get('qty')||'0')||0),
         fromLoc, toLoc,
-        jobCode: el('jobCode').value.trim(),
-        note: el('note').value.trim(),
+        jobCode: sharedJob,
+        note: sharedNote,
+        // client-side id for dedupe on backend
         requestId: (crypto.randomUUID ? crypto.randomUUID() : 'r-'+Date.now()+Math.random().toString(16).slice(2))
       };
     }).filter(it => it.partId && parseFloat(it.qty)>0);
 
     // Validate action-specific requirements
     for (const it of items){
-      if (it.action==='used'    && !it.fromLoc){ alert(`Row with ${it.partId}: select FROM location.`); return; }
-      if (it.action==='received'&& !it.toLoc){   alert(`Row with ${it.partId}: select TO location.`);   return; }
-      if (it.action==='moved'   && (!it.fromLoc || !it.toLoc)){ alert(`Row with ${it.partId}: select BOTH From and To.`); return; }
+      if (it.action==='used'    && !it.fromLoc){ alert(`Row with ${it.partId}: select FROM location.`); btn.disabled=false; btn.textContent='Submit All'; submitting=false; return; }
+      if (it.action==='received'&& !it.toLoc){   alert(`Row with ${it.partId}: select TO location.`);   btn.disabled=false; btn.textContent='Submit All'; submitting=false; return; }
+      if (it.action==='moved'   && (!it.fromLoc || !it.toLoc)){ alert(`Row with ${it.partId}: select BOTH From and To.`); btn.disabled=false; btn.textContent='Submit All'; submitting=false; return; }
     }
 
     try{
       await apiPOST({ kind:'batch', items: JSON.stringify(items) });
       items.forEach(it => prependRecent(`${tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
+      // reset table to a single fresh row
       el('bulkTable').querySelector('tbody').innerHTML = '';
       el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
       enforceRowAction(el('bulkTable').querySelector('tbody tr:last-child'));
+      // clear optional shared fields if they exist
+      if (el('jobCode')) el('jobCode').value = '';
+      if (el('note')) el('note').value = '';
       await flushQueue();
       await loadParts(); // refresh suggestions if new IDs were created
     }catch(e){
       alert('Bulk submit failed: '+e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit All';
+      submitting = false;
     }
   });
 
@@ -362,7 +382,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!company || !partId || !tech) { alert('Company, PartID, Tech required.'); return; }
     const inputs = Array.from(el('countTable').querySelectorAll('input[data-loc]'));
     const rows = inputs.map(inp => ({ locId: inp.dataset.loc, qty: Number(inp.value || 0) }));
-    const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: el('note').value.trim(), jobCode: el('jobCode').value.trim() };
+    const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: (el('note')?el('note').value.trim():''), jobCode: (el('jobCode')?el('jobCode').value.trim():'') };
     try {
       await apiPOST(payload);
       prependRecent(`${tech} counted ${partId}`);
@@ -383,7 +403,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       qty: String(parseFloat(qty) || 0),
       requestedBy: el('tech').value.trim(),
       expectedDate: expected ? String(Date.parse(expected)) : '',
-      note: el('note').value.trim(),
+      note: (el('note')?el('note').value.trim():''),
       requestId: (crypto.randomUUID ? crypto.randomUUID() : 'bo-' + Date.now()),
     };
     try {
@@ -456,7 +476,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         await apiPOST({ kind:'edit',
           requestId: editId,
           tech: el('tech').value.trim(),
-          action, fromLoc, toLoc, qty, note, jobCode: el('jobCode').value.trim()
+          action, fromLoc, toLoc, qty, note, jobCode: (el('jobCode')?el('jobCode').value.trim():'')
         });
         alert('Submission corrected and inventory updated.');
         el('historyLoad').click();
