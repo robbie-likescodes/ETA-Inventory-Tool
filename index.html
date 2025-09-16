@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tech Inventory</title>
   <link rel="stylesheet" href="styles.css">
+  <meta name="theme-color" content="#0b0b0f">
 </head>
 <body>
   <header>
@@ -17,9 +18,8 @@
     <section id="gate" class="card">
       <h2 style="margin:0 0 4px 0">Welcome to Tech Inventory</h2>
       <p class="muted small">Enter your 4-digit team PIN</p>
-      <form id="loginForm" class="inline">
-        <input id="pin" inputmode="numeric" maxlength="4"
-               placeholder="••••" style="max-width:140px" />
+      <form id="loginForm" class="inline" autocomplete="off">
+        <input id="pin" inputmode="numeric" maxlength="4" placeholder="••••" style="max-width:140px" />
         <button type="submit" style="min-width:140px">Enter</button>
       </form>
       <div id="loginMsg" class="msg"></div>
@@ -27,7 +27,7 @@
 
     <!-- App -->
     <section id="app" class="hidden">
-      <!-- Main form -->
+      <!-- Identity -->
       <section class="card">
         <div class="row">
           <label>Company
@@ -37,75 +37,16 @@
             <input id="tech" placeholder="Your name" />
           </label>
         </div>
-
-        <div class="row">
-          <label>Action
-            <select id="action">
-              <option value="used">Used</option>
-              <option value="received">Received</option>
-              <option value="moved">Moved</option>
-            </select>
-          </label>
-          <label>Job Code
-            <input id="jobCode" placeholder="e.g. WO-1234" />
-          </label>
-        </div>
-
-        <label>PartID
-          <input id="partId" list="partsList" placeholder="Type or scan PartID" />
-          <datalist id="partsList"></datalist>
-        </label>
-
-        <div class="row">
-          <label>From (for Used / Move)
-            <select id="fromLoc"></select>
-          </label>
-          <label>To (for Receive / Move)
-            <select id="toLoc"></select>
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Quantity
-            <input id="qty" type="number" step="0.01" min="0.01" />
-          </label>
-          <label>Note
-            <input id="note" placeholder="optional comment" />
-          </label>
-        </div>
-
-        <div class="row">
-          <button id="btnSubmit" type="button">Submit</button>
-          <button id="btnCount" type="button">Count Mode</button>
-          <button id="btnBackorder" type="button">Backorder</button>
-          <button id="btnBulk" type="button">Multi-Entry</button>
-          <button id="btnHistory" type="button">History</button>
-        </div>
         <div class="small muted" id="sync">Sync: idle</div>
       </section>
 
-      <!-- Count Mode -->
-      <section id="countPanel" class="card hidden">
+      <!-- PRIMARY: Multi-Entry always visible -->
+      <section id="bulkPanel" class="card">
         <div class="split">
-          <strong>Count Part (set absolute quantities)</strong>
-          <button id="btnCloseCount" type="button">Close</button>
-        </div>
-        <div id="countMeta" class="muted small"></div>
-        <table id="countTable" style="width:100%;border-collapse:collapse;margin-top:8px">
-          <!-- rows injected -->
-        </table>
-        <div class="row" style="margin-top:8px">
-          <button id="btnSaveCounts" type="button">Save Counts</button>
-        </div>
-      </section>
-
-      <!-- Multi-Entry (bulk) -->
-      <section id="bulkPanel" class="card hidden">
-        <div class="split">
-          <strong>Multi-Entry (add several lines, submit once)</strong>
+          <strong>Log Parts (Multi-Entry)</strong>
           <div class="inline">
             <button id="bulkAdd" type="button">Add line</button>
-            <button id="bulkClose" type="button">Close</button>
+            <button id="bulkSubmit" type="button">Submit All</button>
           </div>
         </div>
 
@@ -124,7 +65,43 @@
         </table>
 
         <div class="row" style="margin-top:8px">
-          <button id="bulkSubmit" type="button">Submit All</button>
+          <label>Job Code
+            <input id="jobCode" placeholder="e.g. WO-1234" />
+          </label>
+          <label>Note
+            <input id="note" placeholder="optional comment" />
+          </label>
+        </div>
+      </section>
+
+      <!-- Tools (Count / Backorder / History) -->
+      <section class="card">
+        <div class="split">
+          <strong>Tools</strong>
+          <div class="inline">
+            <button id="btnCount" type="button">Count Mode</button>
+            <button id="btnBackorder" type="button">Backorder</button>
+            <button id="btnHistory" type="button">History</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>PartID (for Count / Backorder)
+            <input id="partId" list="partsList" placeholder="Type or scan PartID" />
+            <datalist id="partsList"></datalist>
+          </label>
+        </div>
+      </section>
+
+      <!-- Count Mode -->
+      <section id="countPanel" class="card hidden">
+        <div class="split">
+          <strong>Count Part (set absolute quantities)</strong>
+          <button id="btnCloseCount" type="button">Close</button>
+        </div>
+        <div id="countMeta" class="muted small"></div>
+        <table id="countTable" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
+        <div class="row" style="margin-top:8px">
+          <button id="btnSaveCounts" type="button">Save Counts</button>
         </div>
       </section>
 
@@ -132,7 +109,7 @@
       <section id="historyPanel" class="card hidden">
         <div class="split">
           <strong>History by Technician</strong>
-          <button id="historyClose" type="button">Close</button>
+        <button id="historyClose" type="button">Close</button>
         </div>
 
         <div class="row">
