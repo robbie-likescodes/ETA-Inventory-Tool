@@ -3,7 +3,7 @@ const BASE_URL = "https://script.google.com/macros/s/AKfycbwqE8JI_PQFB1P3nqEnRat
 const API_KEY  = "thebluedogisfat"; // must match Settings!API_KEY
 /***********************************************************************/
 
-// Local storage helpers
+/* ---------------- Local storage helpers ---------------- */
 const LS = {
   get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
@@ -12,30 +12,21 @@ const LS = {
 const K = {
   pin: 'inv.pin',
   tech: 'inv.tech',
-  category: 'inv.category',   // new canonical name
-  company: 'inv.company',     // kept for backward-compat
+  company: 'inv.company', // "Category" in Sheets; keep key name for backward-compat
   queue: 'inv.queue',
   parts: 'inv.parts',
+  cats:  'inv.cats',
   locs: 'inv.locs',
 };
 
 const el = (id) => document.getElementById(id);
-const firstEl = (...ids) => ids.map(id => document.getElementById(id)).find(Boolean); // first that exists
-const getVal = (...ids) => {
-  const n = firstEl(...ids);
-  return n ? n.value.trim() : '';
-};
-const setVal = (value, ...ids) => {
-  const n = firstEl(...ids);
-  if (n) n.value = value;
-};
 
-// Network chip
+/* ---------------- Network chip ---------------- */
 function setNet() { el('net').textContent = navigator.onLine ? 'online' : 'offline'; }
 window.addEventListener('online', () => { setNet(); flushQueue(); });
 window.addEventListener('offline', setNet);
 
-// API helpers
+/* ---------------- API helpers ---------------- */
 async function apiGET(route, params = {}) {
   const qs = new URLSearchParams({ route, ...params }).toString();
   const r = await fetch(`${BASE_URL}?${qs}`);
@@ -54,24 +45,23 @@ async function apiPOST(body) {
   return j;
 }
 
-// Queue for offline reliability
+/* ---------------- Queue for offline reliability ---------------- */
 function qAll() { return LS.get(K.queue, []); }
 function qPush(p) { const q = qAll(); q.push(p); LS.set(K.queue, q); }
 function qSet(items) { LS.set(K.queue, items); }
 async function flushQueue() {
   const q = qAll();
   if (!q.length || !navigator.onLine) return;
-  const sync = el('sync');
-  if (sync) sync.textContent = 'Sync: flushing…';
+  el('sync').textContent = 'Sync: flushing…';
   const keep = [];
   for (const item of q) {
     try { await apiPOST(item); } catch { keep.push(item); }
   }
   qSet(keep);
-  if (sync) sync.textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle';
+  el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle';
 }
 
-// Login
+/* ---------------- Auth ---------------- */
 function isAuthed() { return !!LS.get(K.pin, null); }
 async function login(pin) {
   await apiPOST({ kind: 'login', pin }); // Backend checks Settings!LOGIN_PIN
@@ -79,7 +69,7 @@ async function login(pin) {
   return true;
 }
 
-/* ---------- Lists (no direct DOM writes) ---------- */
+/* ---------------- Lists (no direct DOM writes) ---------------- */
 async function loadLocs() {
   try {
     const j = await apiGET('locs');
@@ -99,8 +89,17 @@ async function loadParts() {
   const dl = el('partsList');
   if (dl) dl.innerHTML = ids.map(id => `<option value="${id}">`).join('');
 }
+async function loadCats() {
+  try {
+    const j = await apiGET('cats'); // {cats:[...]} – route added in Code.gs
+    LS.set(K.cats, j.cats || []);
+  } catch { /* ignore */ }
+  const cats = LS.get(K.cats, []);
+  const dl = el('catsList');
+  if (dl) dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
+}
 
-/* ---------- UI helpers ---------- */
+/* ---------------- UI helpers ---------------- */
 function locOptionsHtml() {
   const locs = LS.get(K.locs, []);
   return [
@@ -110,9 +109,13 @@ function locOptionsHtml() {
   ].join('');
 }
 function actionSelectHtml(val='used'){
+  const pretty = { used:'used', received:'received', moved:'moved' };
   const opts = ['used','received','moved']
-    .map(a=>`<option value="${a}" ${a===val?'selected':''}>${a}</option>`).join('');
+    .map(a=>`<option value="${a}" ${a===val?'selected':''}>${pretty[a]}</option>`).join('');
   return `<select data-field="action">${opts}</select>`;
+}
+function categoryInputHtml() {
+  return `<input data-field="company" list="catsList" placeholder="Category (e.g. BUNN)"/>`;
 }
 function bulkRowHtml(){
   return `
@@ -120,6 +123,7 @@ function bulkRowHtml(){
       <td style="padding:6px">
         <input data-field="partId" list="partsList" placeholder="PartID"/>
       </td>
+      <td style="padding:6px">${categoryInputHtml()}</td>
       <td style="padding:6px">${actionSelectHtml()}</td>
       <td style="padding:6px"><select data-field="fromLoc">${locOptionsHtml()}</select></td>
       <td style="padding:6px"><select data-field="toLoc">${locOptionsHtml()}</select></td>
@@ -154,7 +158,7 @@ function enforceRowAction(tr){
   }
 }
 
-/* ---------- Count Mode (uses row.locations from backend) ---------- */
+/* ---------------- Count Mode (uses row.locations from backend) ---------------- */
 function renderCountTable(row) {
   const locs = LS.get(K.locs, []);
   const hasMap = row && row.locations && typeof row.locations === 'object';
@@ -175,23 +179,22 @@ function renderCountTable(row) {
     `<thead><tr><th style="text-align:left;padding:8px">Location</th><th style="text-align:right;padding:8px">Current</th><th style="text-align:right;padding:8px">New</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
-/* ---------- Recent list ---------- */
+/* ---------------- Recent list ---------------- */
 function prependRecent(text) {
   const li = document.createElement('li');
   li.textContent = text;
   el('recent').prepend(li);
 }
 
-/* ---------- History (list + edit/void) ---------- */
+/* ---------------- History (list + edit/void) ---------------- */
 async function loadTechs(){
   const sel = el('historyTech');
-  if (!sel) return;
   sel.disabled = true;
   sel.innerHTML = '<option value="">(loading…)</option>';
   try{
     const j = await apiGET('techs');
     let techs = j.techs || [];
-    const me = (el('tech')?.value || '').trim();
+    const me = (el('tech').value||'').trim();
     if (me && !techs.includes(me)) techs = [me, ...techs];
     if (!techs.length) {
       sel.innerHTML = '<option value="">(no records yet)</option>';
@@ -207,10 +210,8 @@ async function loadTechs(){
   }
 }
 function renderHistory(items){
-  const list = el('historyList');
-  if (!list) return;
   if (!items || !items.length){
-    list.innerHTML = `<div class="muted small">No records.</div>`;
+    el('historyList').innerHTML = `<div class="muted small">No records.</div>`;
     return;
   }
   const rows = items.map(it=>{
@@ -221,7 +222,7 @@ function renderHistory(items){
       it.action==='received' ? `${it.qty} ${it.partId} (to ${it.toLoc||'—'})` :
       it.action==='count'    ? `count Δ=${it.qty} ${it.partId}` :
       it.action==='backorder'? `BO ${it.qty} ${it.partId}` : `${it.qty} ${it.partId}`;
-    const extra = [it.company || it.category, it.jobCode].filter(Boolean).join(' • ');
+    const extra = [it.company, it.jobCode].filter(Boolean).join(' • ');
     const note = it.note ? ` — ${it.note}` : '';
     const canEdit = !['count','backorder'].includes(String(it.action||''));
     const buttons = canEdit
@@ -233,7 +234,7 @@ function renderHistory(items){
       <div class="inline" style="margin-top:4px;gap:6px">${buttons}</div>
     </li>`;
   }).join('');
-  list.innerHTML = `<ul id="recent">${rows}</ul>`;
+  el('historyList').innerHTML = `<ul id="recent">${rows}</ul>`;
 }
 function confirmChange(whenStr){
   return confirm(`This was completed on ${whenStr || 'this date'}. Are you sure you want to change your submission?`);
@@ -242,82 +243,97 @@ function confirmDelete(whenStr){
   return confirm(`This was completed on ${whenStr || 'this date'}. Are you sure you want to delete (void) this submission?`);
 }
 
-/* ---------- Boot ---------- */
+/* ---------------- Boot ---------------- */
 window.addEventListener('DOMContentLoaded', async () => {
   setNet();
 
   // Login gate
   if (isAuthed()) {
-    el('gate')?.classList.add('hidden');
-    el('app')?.classList.remove('hidden');
+    el('gate').classList.add('hidden');
+    el('app').classList.remove('hidden');
   }
-  el('loginForm')?.addEventListener('submit', async (e) => {
+  el('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (el('loginMsg')) el('loginMsg').textContent = '';
-    const pin = el('pin')?.value.trim();
+    el('loginMsg').textContent = '';
+    const pin = el('pin').value.trim();
     try {
       await login(pin);
-      el('gate')?.classList.add('hidden');
-      el('app')?.classList.remove('hidden');
+      el('gate').classList.add('hidden');
+      el('app').classList.remove('hidden');
     } catch (err) {
-      if (el('loginMsg')) el('loginMsg').textContent = 'Incorrect PIN or server error.';
+      el('loginMsg').textContent = 'Incorrect PIN or server error.';
     }
   });
 
-  // Remember tech & category/company (works with either field name)
-  setVal(LS.get(K.tech, ''), 'tech');
-  setVal(LS.get(K.category, LS.get(K.company, '')), 'category', 'company');
+  // Remember tech & default Category (company)
+  const techInput = el('tech');
+  const compInput = el('company'); // "Category (optional)" at top Tools row
 
-  el('tech')?.addEventListener('change', () => LS.set(K.tech, el('tech').value.trim()));
-  const catInput = firstEl('category', 'company');
-  catInput?.addEventListener('change', () => {
-    const v = catInput.value.trim();
-    LS.set(K.category, v);
-    LS.set(K.company, v); // keep both in sync for older code
-  });
+  if (techInput) techInput.value = LS.get(K.tech, '');
+  if (compInput) compInput.value = LS.get(K.company, '');
+
+  if (techInput) techInput.addEventListener('change', () => LS.set(K.tech, techInput.value.trim()));
+  if (compInput) compInput.addEventListener('change', () => LS.set(K.company, compInput.value.trim()));
 
   // Load lists
   await loadLocs();
   await loadParts();
+  await loadCats();
 
   // Seed one empty bulk row by default
-  el('bulkTable')?.querySelector('tbody')?.insertAdjacentHTML('beforeend', bulkRowHtml());
-  Array.from(el('bulkTable')?.querySelectorAll('tbody tr') || []).forEach(enforceRowAction);
+  el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
+  Array.from(el('bulkTable').querySelectorAll('tbody tr')).forEach(enforceRowAction);
 
   // === Bulk behaviors ===
-  el('bulkAdd')?.addEventListener('click', ()=>{
+  el('bulkAdd').addEventListener('click', ()=>{
     el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
     const tr = el('bulkTable').querySelector('tbody tr:last-child');
     enforceRowAction(tr);
   });
 
-  el('bulkTable')?.addEventListener('change', (e)=>{
+  // Per-row logic
+  el('bulkTable').addEventListener('change', (e)=>{
     const tr = e.target.closest('tr');
     if (!tr) return;
+
+    // Action visibility
     if (e.target.matches('[data-field="action"]')){
       enforceRowAction(tr);
     }
+
+    // If the row's Category is blank and the top-level has value, fill it
+    if (e.target.matches('[data-field="partId"]')){
+      const rowCat = tr.querySelector('[data-field="company"]');
+      if (rowCat && !rowCat.value && compInput && compInput.value) {
+        rowCat.value = compInput.value;
+      }
+    }
   });
 
-  el('bulkTable')?.addEventListener('click', (e)=>{
+  el('bulkTable').addEventListener('click', (e)=>{
     if (e.target.dataset.action==='remove'){
       const tr = e.target.closest('tr'); if (tr) tr.remove();
     }
   });
 
-  el('bulkSubmit')?.addEventListener('click', async ()=>{
-    const category = getVal('category', 'company'); // supports either input id
-    const tech     = getVal('tech');
-    if (!category || !tech){ alert('Category and Technician are required.'); return; }
-    const tbody = el('bulkTable')?.querySelector('tbody');
-    const rows = Array.from(tbody?.querySelectorAll('tr') || []);
+  // Submit All — includes idempotency via unique requestId per line
+  let submitting = false;
+  el('bulkSubmit').addEventListener('click', async ()=>{
+    if (submitting) return; // guard rapid double clicks
+    const tech    = el('tech').value.trim();
+    if (!tech){ alert('Technician is required.'); return; }
+
+    const rows = Array.from(el('bulkTable').querySelectorAll('tbody tr'));
     if (!rows.length){ alert('Add at least one line.'); return; }
+
+    const defaultCat = (el('company').value || '').trim();
 
     const items = rows.map(tr=>{
       const get = name => { const n = tr.querySelector(`[data-field="${name}"]`); return n ? n.value : ''; };
       const action = get('action') || 'used';
       let fromLoc = get('fromLoc');
       let toLoc   = get('toLoc');
+      const company = (get('company') || defaultCat).trim(); // per-row Category with fallback
 
       if (action === 'used'){
         if (!fromLoc || fromLoc === 'N/A'){ fromLoc = ''; }
@@ -331,118 +347,115 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
 
       return {
-        // send BOTH for compatibility with older/newer backends
-        company: category,
-        category,
+        company,
         tech,
         action,
         partId: (get('partId')||'').trim(),
         qty: String(parseFloat(get('qty')||'0')||0),
         fromLoc, toLoc,
-        jobCode: getVal('jobCode'), // optional
-        note: getVal('note'),
+        jobCode: el('jobCode').value.trim(),
+        note: el('note').value.trim(),
         requestId: (crypto.randomUUID ? crypto.randomUUID() : 'r-'+Date.now()+Math.random().toString(16).slice(2))
       };
-    }).filter(it => it.partId && parseFloat(it.qty)>0);
+    }).filter(it => it.company && it.partId && parseFloat(it.qty)>0);
+
+    if (!items.length){ alert('Each row needs Category, PartID and Qty.'); return; }
 
     // Validate action-specific requirements
     for (const it of items){
-      if (it.action==='used'    && !it.fromLoc){ alert(`Row with ${it.partId}: select FROM location.`); return; }
-      if (it.action==='received'&& !it.toLoc){   alert(`Row with ${it.partId}: select TO location.`);   return; }
-      if (it.action==='moved'   && (!it.fromLoc || !it.toLoc)){ alert(`Row with ${it.partId}: select BOTH From and To.`); return; }
+      if (it.action==='used'    && !it.fromLoc){ alert(`Row ${it.partId}: select FROM location.`); return; }
+      if (it.action==='received'&& !it.toLoc){   alert(`Row ${it.partId}: select TO location.`);   return; }
+      if (it.action==='moved'   && (!it.fromLoc || !it.toLoc)){ alert(`Row ${it.partId}: select BOTH From and To.`); return; }
     }
 
+    submitting = true;
     try{
       await apiPOST({ kind:'batch', items: JSON.stringify(items) });
-      items.forEach(it => prependRecent(`${tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
-      if (tbody){
-        tbody.innerHTML = '';
-        tbody.insertAdjacentHTML('beforeend', bulkRowHtml());
-        enforceRowAction(tbody.querySelector('tr:last-child'));
-      }
+      items.forEach(it => prependRecent(`${it.company}: ${it.tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
+      // reset form
+      el('bulkTable').querySelector('tbody').innerHTML = '';
+      el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
+      enforceRowAction(el('bulkTable').querySelector('tbody tr:last-child'));
+      el('note').value = '';
+      // toast
+      alert('Submitted successfully.');
       await flushQueue();
       await loadParts(); // refresh suggestions if new IDs were created
-      // Optional toast
-      alert('Submitted successfully.');
-      // Clear notes / job code for next entry
-      setVal('', 'note');
-      setVal('', 'jobCode');
+      await loadCats();
     }catch(e){
       alert('Bulk submit failed: '+e.message);
+    }finally{
+      submitting = false;
     }
   });
 
   // === Count Mode ===
-  el('btnCount')?.addEventListener('click', async ()=>{
-    const category = getVal('category', 'company');
-    const partId  = getVal('partId');
-    if (!category || !partId) { alert('Enter Category and PartID first.'); return; }
+  el('btnCount').addEventListener('click', async ()=>{
+    const company = (el('company').value||'').trim();
+    const partId  = (el('partId').value||'').trim();
+    if (!company || !partId) { alert('Enter Category and PartID first.'); return; }
     try {
-      // send both names; backend will use whichever it expects
-      const j = await apiGET('part', { company: category, category, partId });
-      const meta = el('countMeta');
-      if (meta) meta.textContent = `${category} — ${partId}`;
+      const j = await apiGET('part', { company, partId });
+      el('countMeta').textContent = `${company} — ${partId}`;
       renderCountTable(j.row || {});
-      el('countPanel')?.classList.remove('hidden');
+      el('countPanel').classList.remove('hidden');
     } catch (e) { alert('Could not load part row: ' + e.message); }
   });
-  el('btnCloseCount')?.addEventListener('click', ()=> el('countPanel')?.classList.add('hidden'));
+  el('btnCloseCount').addEventListener('click', ()=> el('countPanel').classList.add('hidden'));
 
-  el('btnSaveCounts')?.addEventListener('click', async ()=>{
-    const category = getVal('category', 'company');
-    const partId  = getVal('partId');
-    const tech    = getVal('tech');
-    if (!category || !partId || !tech) { alert('Category, PartID, Tech required.'); return; }
-    const inputs = Array.from(el('countTable')?.querySelectorAll('input[data-loc]') || []);
+  el('btnSaveCounts').addEventListener('click', async ()=>{
+    const company = (el('company').value||'').trim();
+    const partId  = (el('partId').value||'').trim();
+    const tech    = (el('tech').value||'').trim();
+    if (!company || !partId || !tech) { alert('Category, PartID, Tech required.'); return; }
+    const inputs = Array.from(el('countTable').querySelectorAll('input[data-loc]'));
     const rows = inputs.map(inp => ({ locId: inp.dataset.loc, qty: Number(inp.value || 0) }));
-    const payload = { kind:'count', company: category, category, tech, partId, counts: JSON.stringify(rows), note: getVal('note'), jobCode: getVal('jobCode') };
+    const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: el('note').value.trim(), jobCode: el('jobCode').value.trim() };
     try {
       await apiPOST(payload);
-      prependRecent(`${tech} counted ${partId}`);
-      el('countPanel')?.classList.add('hidden');
+      prependRecent(`${tech} counted ${partId} (${company})`);
+      el('countPanel').classList.add('hidden');
     } catch (e) { alert('Save failed: ' + e.message); }
   });
 
   // === Backorder ===
-  el('btnBackorder')?.addEventListener('click', async ()=>{
-    const partId = getVal('partId');
-    if (!partId){ alert('Enter a PartID first.'); return; }
+  el('btnBackorder').addEventListener('click', async ()=>{
+    const partId = (el('partId').value||'').trim();
+    const company = (el('company').value||'').trim();
+    if (!partId || !company){ alert('Enter a PartID and Category first.'); return; }
     const qty = prompt('Backorder quantity?'); if (!qty) return;
     const expected = prompt('Expected date? (optional YYYY-MM-DD)');
     const payload = {
       kind: 'backorder',
-      company: getVal('category','company'),
-      category: getVal('category','company'),
+      company,
       partId,
       qty: String(parseFloat(qty) || 0),
-      requestedBy: getVal('tech'),
+      requestedBy: (el('tech').value||'').trim(),
       expectedDate: expected ? String(Date.parse(expected)) : '',
-      note: getVal('note'),
+      note: el('note').value.trim(),
       requestId: (crypto.randomUUID ? crypto.randomUUID() : 'bo-' + Date.now()),
     };
     try {
       await apiPOST(payload);
-      prependRecent(`backorder ${payload.qty} × ${payload.partId}`);
+      prependRecent(`backorder ${payload.qty} × ${payload.partId} (${company})`);
     } catch (e) { alert('Backorder failed: ' + e.message); }
   });
 
   // === History panel ===
-  el('btnHistory')?.addEventListener('click', async ()=>{
-    const hc = el('historyCompany');
-    if (hc) hc.value = getVal('category','company');
+  el('btnHistory').addEventListener('click', async ()=>{
+    el('historyCompany').value = el('company').value;
     await loadTechs();
-    el('historyPanel')?.classList.remove('hidden');
+    el('historyPanel').classList.remove('hidden');
   });
-  el('historyClose')?.addEventListener('click', ()=> el('historyPanel')?.classList.add('hidden'));
-  el('historyLoad')?.addEventListener('click', async ()=>{
-    const tech = el('historyTech')?.value;
+  el('historyClose').addEventListener('click', ()=> el('historyPanel').classList.add('hidden'));
+  el('historyLoad').addEventListener('click', async ()=>{
+    const tech = el('historyTech').value;
     if (!tech){ alert('Pick a technician'); return; }
     const params = {
       tech,
-      company: (el('historyCompany')?.value||'').trim(), // backend will accept company or category
-      category: (el('historyCompany')?.value||'').trim(),
-      partId:  (el('historyPart')?.value||'').trim(),
-      limit:   String(parseInt(el('historyLimit')?.value||100))
+      company: (el('historyCompany').value||'').trim(),
+      partId:  (el('historyPart').value||'').trim(),
+      limit:   String(parseInt(el('historyLimit').value||100))
     };
     try{
       const j = await apiGET('history', params);
@@ -453,7 +466,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   // History edit/void with confirmations
-  el('historyList')?.addEventListener('click', async (e)=>{
+  el('historyList').addEventListener('click', async (e)=>{
     const editId = e.target.dataset.edit;
     const voidId = e.target.dataset.void;
     if (!editId && !voidId) return;
@@ -464,9 +477,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (voidId){
       if (!confirmDelete(whenStr)) return;
       try{
-        await apiPOST({ kind:'void', requestId: voidId, tech: getVal('tech') });
+        await apiPOST({ kind:'void', requestId: voidId, tech: el('tech').value.trim() });
         alert('Submission voided and inventory restored.');
-        el('historyLoad')?.click();
+        el('historyLoad').click();
       }catch(err){ alert('Delete failed: '+err.message); }
       return;
     }
@@ -491,11 +504,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       try{
         await apiPOST({ kind:'edit',
           requestId: editId,
-          tech: getVal('tech'),
-          action, fromLoc, toLoc, qty, note, jobCode: getVal('jobCode')
+          tech: el('tech').value.trim(),
+          action, fromLoc, toLoc, qty, note, jobCode: el('jobCode').value.trim()
         });
         alert('Submission corrected and inventory updated.');
-        el('historyLoad')?.click();
+        el('historyLoad').click();
       }catch(err){ alert('Edit failed: '+err.message); }
     }
   });
