@@ -30,8 +30,8 @@
       <!-- Identity -->
       <section class="card">
         <div class="row">
-          <label>Company
-            <input id="company" placeholder="e.g. Starbucks" />
+          <label>Job Code (optional)
+            <input id="jobCodeTop" placeholder="e.g. ETA-509" />
           </label>
           <label>Technician
             <input id="tech" placeholder="Your name" />
@@ -54,6 +54,7 @@
           <thead>
             <tr>
               <th style="text-align:left;padding:8px">PartID</th>
+              <th style="text-align:left;padding:8px">Category</th>
               <th style="text-align:left;padding:8px">Action</th>
               <th style="text-align:left;padding:8px">From</th>
               <th style="text-align:left;padding:8px">To</th>
@@ -65,9 +66,6 @@
         </table>
 
         <div class="row" style="margin-top:8px">
-          <label>Job Code
-            <input id="jobCode" placeholder="e.g. ETA-509" />
-          </label>
           <label>Note
             <input id="note" placeholder="optional comment" />
           </label>
@@ -89,6 +87,9 @@
             <input id="partId" list="partsList" placeholder="Type or scan PartID" />
             <datalist id="partsList"></datalist>
           </label>
+          <label>Category (optional)
+            <input id="partCategory" placeholder="e.g. BUNN" />
+          </label>
         </div>
       </section>
 
@@ -105,28 +106,63 @@
         </div>
       </section>
 
-      <!-- History by Technician -->
+      <!-- History -->
       <section id="historyPanel" class="card hidden">
         <div class="split">
-          <strong>History by Technician</strong>
-        <button id="historyClose" type="button">Close</button>
+          <strong>History</strong>
+          <button id="historyClose" type="button">Close</button>
         </div>
 
+        <!-- Mode selector -->
         <div class="row">
-          <label>Technician
-            <select id="historyTech"></select>
-          </label>
-          <label>Company (optional)
-            <input id="historyCompany" placeholder="e.g. Starbucks" />
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Filter PartID (optional)
-            <input id="historyPart" placeholder="e.g. PM-FT-21" />
+          <label>View by
+            <select id="histMode">
+              <option value="tech">Technician</option>
+              <option value="part">Part</option>
+              <option value="job">Job Code</option>
+            </select>
           </label>
           <label>Max rows
             <input id="historyLimit" type="number" min="10" step="10" value="100" />
+          </label>
+        </div>
+
+        <!-- Technician filters -->
+        <div class="row hist-tech">
+          <label>Technician
+            <select id="historyTech"></select>
+          </label>
+          <label>Category (optional)
+            <input id="historyCategory" placeholder="e.g. BUNN" />
+          </label>
+          <label>Filter PartID (optional)
+            <input id="historyPart" placeholder="e.g. 639458345" />
+          </label>
+        </div>
+
+        <!-- Part filters -->
+        <div class="row hist-part hidden">
+          <label>PartID
+            <input id="historyPart2" placeholder="e.g. 639458345" />
+          </label>
+          <label>Category (optional)
+            <input id="historyCategory2" placeholder="e.g. BUNN" />
+          </label>
+        </div>
+
+        <!-- Job filters -->
+        <div class="row hist-job hidden">
+          <label>Job Code
+            <input id="historyJob" placeholder="e.g. ETA-493" />
+          </label>
+          <label>Category (optional)
+            <input id="historyCategory3" placeholder="e.g. BUNN" />
+          </label>
+          <label>PartID (optional)
+            <input id="historyPart3" placeholder="e.g. 639458345" />
+          </label>
+          <label>Technician (optional)
+            <input id="historyTech3" placeholder="e.g. Brian" />
           </label>
         </div>
 
