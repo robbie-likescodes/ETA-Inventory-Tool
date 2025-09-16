@@ -54,7 +54,7 @@ async function flushQueue() {
   el('sync').textContent = 'Sync: flushing…';
   const keep = [];
   for (const item of q) {
-    try { await apiPOST(item); } catch (e) { keep.push(item); }
+    try { await apiPOST(item); } catch { keep.push(item); }
   }
   qSet(keep);
   el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle';
@@ -68,13 +68,14 @@ async function login(pin) {
   return true;
 }
 
-// Load locations & parts
+/* ---------- Lists (no direct DOM writes) ---------- */
 async function loadLocs() {
   try {
     const j = await apiGET('locs');
     LS.set(K.locs, j.locs || []);
   } catch {
-    LS.set(K.locs, ['Office', 'Shop', 'CrashBox', 'Van1', 'Van2', 'Van3', 'Van4']);
+    // fallback fixed list
+    LS.set(K.locs, ['Office','Shop','CrashBox','Van1','Van2','Van3','Van4']);
   }
 }
 async function loadParts() {
@@ -88,7 +89,7 @@ async function loadParts() {
   if (dl) dl.innerHTML = ids.map(id => `<option value="${id}">`).join('');
 }
 
-// Helpers for selects
+/* ---------- UI helpers ---------- */
 function locOptionsHtml() {
   const locs = LS.get(K.locs, []);
   return [
@@ -125,19 +126,16 @@ function enforceRowAction(tr){
   const toSel   = tr.querySelector('[data-field="toLoc"]');
 
   if (action === 'used') {
-    // From required; To = N/A & disabled
     if (!fromSel.value || fromSel.value === 'N/A') fromSel.value = '';
     toSel.value = 'N/A';
     toSel.disabled = true;
     fromSel.disabled = false;
   } else if (action === 'received') {
-    // To required; From = N/A & disabled
     if (!toSel.value || toSel.value === 'N/A') toSel.value = '';
     fromSel.value = 'N/A';
     fromSel.disabled = true;
     toSel.disabled = false;
   } else { // moved
-    // Both required; none disabled
     if (toSel.value === 'N/A') toSel.value = '';
     if (fromSel.value === 'N/A') fromSel.value = '';
     fromSel.disabled = false;
@@ -145,7 +143,7 @@ function enforceRowAction(tr){
   }
 }
 
-// Count mode rendering (uses row.locations from backend)
+/* ---------- Count Mode (uses row.locations from backend) ---------- */
 function renderCountTable(row) {
   const locs = LS.get(K.locs, []);
   const hasMap = row && row.locations && typeof row.locations === 'object';
@@ -166,14 +164,14 @@ function renderCountTable(row) {
     `<thead><tr><th style="text-align:left;padding:8px">Location</th><th style="text-align:right;padding:8px">Current</th><th style="text-align:right;padding:8px">New</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
-// Recent list
+/* ---------- Recent list ---------- */
 function prependRecent(text) {
   const li = document.createElement('li');
   li.textContent = text;
   el('recent').prepend(li);
 }
 
-// --- History helpers (list + edit/void) ---
+/* ---------- History (list + edit/void) ---------- */
 async function loadTechs(){
   const sel = el('historyTech');
   sel.disabled = true;
@@ -230,7 +228,7 @@ function confirmDelete(whenStr){
   return confirm(`This was completed on ${whenStr || 'this date'}. Are you sure you want to delete (void) this submission?`);
 }
 
-// Boot
+/* ---------- Boot ---------- */
 window.addEventListener('DOMContentLoaded', async () => {
   setNet();
 
@@ -424,7 +422,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     const voidId = e.target.dataset.void;
     if (!editId && !voidId) return;
 
-    // Get displayed timestamp for confirm text
     const li = e.target.closest('li');
     const whenStr = li ? (li.querySelector('strong')?.textContent || '') : '';
 
