@@ -31,7 +31,7 @@
       <section class="card">
         <div class="row">
           <label>Job Code (optional)
-            <input id="jobCodeTop" placeholder="e.g. ETA-509" />
+            <input id="jobCode" placeholder="e.g. ETA-509" />
           </label>
           <label>Technician
             <input id="tech" placeholder="Your name" />
@@ -88,7 +88,9 @@
             <datalist id="partsList"></datalist>
           </label>
           <label>Category (optional)
-            <input id="partCategory" placeholder="e.g. BUNN" />
+            <!-- Top-level fallback category if a row leaves Category blank -->
+            <input id="company" list="catsList" placeholder="e.g. BUNN" />
+            <datalist id="catsList"></datalist>
           </label>
         </div>
       </section>
@@ -106,63 +108,28 @@
         </div>
       </section>
 
-      <!-- History -->
+      <!-- History by Technician -->
       <section id="historyPanel" class="card hidden">
         <div class="split">
-          <strong>History</strong>
+          <strong>History by Technician</strong>
           <button id="historyClose" type="button">Close</button>
         </div>
 
-        <!-- Mode selector -->
         <div class="row">
-          <label>View by
-            <select id="histMode">
-              <option value="tech">Technician</option>
-              <option value="part">Part</option>
-              <option value="job">Job Code</option>
-            </select>
-          </label>
-          <label>Max rows
-            <input id="historyLimit" type="number" min="10" step="10" value="100" />
-          </label>
-        </div>
-
-        <!-- Technician filters -->
-        <div class="row hist-tech">
           <label>Technician
             <select id="historyTech"></select>
           </label>
           <label>Category (optional)
-            <input id="historyCategory" placeholder="e.g. BUNN" />
+            <input id="historyCompany" placeholder="e.g. BUNN" />
           </label>
+        </div>
+
+        <div class="row">
           <label>Filter PartID (optional)
             <input id="historyPart" placeholder="e.g. 639458345" />
           </label>
-        </div>
-
-        <!-- Part filters -->
-        <div class="row hist-part hidden">
-          <label>PartID
-            <input id="historyPart2" placeholder="e.g. 639458345" />
-          </label>
-          <label>Category (optional)
-            <input id="historyCategory2" placeholder="e.g. BUNN" />
-          </label>
-        </div>
-
-        <!-- Job filters -->
-        <div class="row hist-job hidden">
-          <label>Job Code
-            <input id="historyJob" placeholder="e.g. ETA-493" />
-          </label>
-          <label>Category (optional)
-            <input id="historyCategory3" placeholder="e.g. BUNN" />
-          </label>
-          <label>PartID (optional)
-            <input id="historyPart3" placeholder="e.g. 639458345" />
-          </label>
-          <label>Technician (optional)
-            <input id="historyTech3" placeholder="e.g. Brian" />
+          <label>Max rows
+            <input id="historyLimit" type="number" min="10" step="10" value="100" />
           </label>
         </div>
 
