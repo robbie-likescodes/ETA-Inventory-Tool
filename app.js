@@ -1,5 +1,5 @@
 /*************** FIXED CONNECTION (update if you redeploy) ***************/
-const BASE_URL = "https://script.google.com/macros/s/AKfycbzelyqp4WX9dNp6e1b2iM9d2jCgwyvubsQjqV0F9azYNj8GOBt0A3fXCCUKtVYP7zCC1g/exec"; // Apps Script /exec
+const BASE_URL = "https://script.google.com/macros/s/AKfycbyRX7byplV740ZDzujHM9cv-TcZCEqq9jzwXzcvZaWHPvXU2GUTSbdu1C_CO61wqAAzAA/exec"; // Apps Script /exec
 const API_KEY  = "thebluedogisfat"; // must match Settings!API_KEY
 /***********************************************************************/
 
