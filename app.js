@@ -40,6 +40,20 @@ function toast(msg, ms=2200){
   t._hide = setTimeout(()=> t.classList.remove('show'), ms);
 }
 
+/* ---------------- Panel helpers (slide open/close) ---------------- */
+function openPanel(id){
+  const p = el(id); if (!p) return;
+  p.classList.add('show');
+  p.classList.remove('hidden');
+  p.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function closePanel(id){
+  const p = el(id); if (!p) return;
+  p.classList.remove('show');
+  // keep .hidden for initial render compatibility
+  p.classList.add('hidden');
+}
+
 /* ---------------- Network chip ---------------- */
 function setNet() { el('net').textContent = navigator.onLine ? 'online' : 'offline'; }
 window.addEventListener('online', () => { setNet(); flushQueue(); });
@@ -64,7 +78,7 @@ async function apiPOST(body) {
   return j;
 }
 
-/* ---------------- Queue for offline reliability ---------------- */
+/* -------------- Post or Queue wrapper (offline friendly) -------------- */
 function qAll() { return LS.get(K.queue, []); }
 function qPush(p) { const q = qAll(); q.push(p); LS.set(K.queue, q); }
 function qSet(items) { LS.set(K.queue, items); }
@@ -78,6 +92,26 @@ async function flushQueue() {
   }
   qSet(keep);
   el('sync') && (el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle');
+}
+async function submitOrQueue(body, successMsg){
+  if (!navigator.onLine) {
+    qPush(body);
+    toast('Submission queued and will upload when the internet connection is back.');
+    return { queued:true };
+  }
+  try{
+    const res = await apiPOST(body);
+    toast(successMsg || 'Submitted');
+    return res;
+  }catch(err){
+    // If fetch reaches server but fails logically, surface error; if network error, queue
+    if (String(err.message||'').match(/Failed to fetch|NetworkError|TypeError/i)) {
+      qPush(body);
+      toast('Submission queued and will upload when the internet connection is back.');
+      return { queued:true };
+    }
+    throw err;
+  }
 }
 
 /* ---------------- Auth ---------------- */
@@ -99,7 +133,7 @@ async function loadLocs() {
 }
 async function loadParts() {
   try {
-    const j = await apiGET('parts'); // Code.gs returns [{PartID, Category?}] or [{PartID}]
+    const j = await apiGET('parts');
     const ids = (j.parts || []).map(p => p.PartID);
     LS.set(K.parts, ids);
   } catch { /* fine if none yet */ }
@@ -184,7 +218,9 @@ function enforceRowAction(tr){
   }
 }
 
-/* ---------------- Count Mode (uses row.locations from backend) ---------------- */
+/* ---------------- Count Mode ---------------- */
+let lastCountCat = ''; // keep resolved category across saves
+
 function renderCountTable(row) {
   const locs = LS.get(K.locs, []);
   const hasMap = row && row.locations && typeof row.locations === 'object';
@@ -203,6 +239,21 @@ function renderCountTable(row) {
   }).join('');
   el('countTable').innerHTML =
     `<thead><tr><th style="text-align:left;padding:8px">Location</th><th style="text-align:right;padding:8px">Current</th><th style="text-align:right;padding:8px">New</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+async function loadCountPart(){
+  const partId = gv('countPartId');
+  if (!partId){ toast('Enter a PartID'); return; }
+  let company = await autoCat(partId);
+  if (!company){ toast('No category found for this PartID'); return; }
+  lastCountCat = company;
+  try{
+    const j = await apiGET('part', { company, partId });
+    el('countMeta').textContent = `${company} — ${partId}`;
+    renderCountTable(j.row || {});
+  }catch(e){
+    alert('Could not load part row: '+e.message);
+  }
 }
 
 /* ---------------- Recent list ---------------- */
@@ -234,6 +285,22 @@ async function loadTechs(){
     sel.focus();
   }
 }
+
+function showHistFields(by){
+  const blocks = {
+    tech: 'histFieldTech',
+    daterange: 'histFieldDate',
+    category: 'histFieldCategory',
+    part: 'histFieldPart',
+    job: 'histFieldJob',
+  };
+  // hide all
+  Object.values(blocks).forEach(id => el(id)?.classList.add('hidden'));
+  // show selected
+  const tgt = blocks[by];
+  if (tgt) el(tgt)?.classList.remove('hidden');
+}
+
 function renderHistory(items){
   if (!el('historyList')) return;
   if (!items || !items.length){
@@ -248,7 +315,7 @@ function renderHistory(items){
       it.action==='received' ? `${it.qty} ${it.partId} (to ${it.toLoc||'—'})` :
       it.action==='count'    ? `count Δ=${it.qty} ${it.partId}` :
       it.action==='backorder'? `BO ${it.qty} ${it.partId}` : `${it.qty} ${it.partId}`;
-    const extra = [it.company || it.category, it.jobCode].filter(Boolean).join(' • ');
+    const extra = [it.category || it.company, it.jobCode].filter(Boolean).join(' • ');
     const note = it.note ? ` — ${it.note}` : '';
     const canEdit = !['count','backorder'].includes(String(it.action||''));
     const buttons = canEdit
@@ -262,6 +329,7 @@ function renderHistory(items){
   }).join('');
   el('historyList').innerHTML = `<ul id="recent">${rows}</ul>`;
 }
+
 function confirmChange(whenStr){
   return confirm(`This was completed on ${whenStr || 'this date'}. Are you sure you want to change your submission?`);
 }
@@ -293,7 +361,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Remember tech & default Category (company)
   const techInput = el('tech');
-  const compInput = el('company'); // "Category (optional)" at top Tools row
+  const compInput = el('company');
   if (techInput) techInput.value = LS.get(K.tech, '');
   if (compInput) compInput.value = LS.get(K.company, '');
   techInput?.addEventListener('change', () => LS.set(K.tech, gv('tech')));
@@ -322,7 +390,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     const tr = e.target.closest('tr');
     if (!tr) return;
 
-    // Action toggle
     if (e.target.matches('[data-field="action"]')){
       enforceRowAction(tr);
       return;
@@ -352,7 +419,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Submit All — idempotent via unique requestId per line + UI guard
+  // Submit All — idempotent via unique requestId per line + offline queue
   let submitting = false;
   const btnSubmit = el('bulkSubmit');
   btnSubmit?.addEventListener('click', async ()=>{
@@ -407,9 +474,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     submitting = true;
-    if (btnSubmit) btnSubmit.disabled = true;
+    btnSubmit.disabled = true;
     try{
-      await apiPOST({ kind:'batch', items: JSON.stringify(items) });
+      await submitOrQueue({ kind:'batch', items: JSON.stringify(items) }, 'Parts submitted successfully');
       items.forEach(it => prependRecent(`${it.company}: ${it.tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
       // reset form
       const tb = el('bulkTable')?.querySelector('tbody');
@@ -419,7 +486,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         enforceRowAction(el('bulkTable').querySelector('tbody tr:last-child'));
       }
       if (el('note')) el('note').value = '';
-      toast('Parts submitted successfully');
       await flushQueue();
       await loadParts();
       await loadCats();
@@ -427,76 +493,65 @@ window.addEventListener('DOMContentLoaded', async () => {
       alert('Bulk submit failed: '+e.message);
     }finally{
       submitting = false;
-      if (btnSubmit) btnSubmit.disabled = false;
+      btnSubmit.disabled = false;
     }
   });
 
-  // === Count Mode ===
-  el('btnCount')?.addEventListener('click', async ()=>{
-    let company = gv('company');
-    let partId = gv('partId');
-    if (!partId){
-      const p = prompt('Enter PartID to count:','');
-      partId = p ? p.trim() : '';
-    }
-    if (!partId){ alert('PartID required.'); return; }
-    if (!company){
-      company = await autoCat(partId);
-      if (company) {
-        if (el('company')) el('company').value = company;
-        LS.set(K.company, company);
-      }
-    }
-    if (!company) { alert('Category required.'); return; }
-
-    try {
-      const j = await apiGET('part', { company, partId });
-      el('countMeta') && (el('countMeta').textContent = `${company} — ${partId}`);
-      renderCountTable(j.row || {});
-      el('countPanel')?.classList.remove('hidden');
-    } catch (e) { alert('Could not load part row: ' + e.message); }
+  /* ======================== TOOLS: COUNT ======================== */
+  el('btnCount')?.addEventListener('click', ()=>{
+    openPanel('panelCount');
+    el('countPartId')?.focus();
   });
-  el('btnCloseCount')?.addEventListener('click', ()=> el('countPanel')?.classList.add('hidden'));
+  el('btnCloseCount')?.addEventListener('click', ()=> closePanel('panelCount'));
+
+  // Load part data as soon as PartID entered/changed
+  el('countPartId')?.addEventListener('change', loadCountPart);
 
   el('btnSaveCounts')?.addEventListener('click', async ()=>{
-    const company = gv('company');
-    const partId  = gv('partId');
+    const partId  = gv('countPartId');
     const tech    = gv('tech');
-    if (!company || !partId || !tech) { alert('Category, PartID, Tech required.'); return; }
+    const company = lastCountCat || await autoCat(partId);
+    if (!company || !partId || !tech) { alert('PartID, Category, and Tech required.'); return; }
     const inputs = Array.from(el('countTable')?.querySelectorAll('input[data-loc]') || []);
     const rows = inputs.map(inp => ({ locId: inp.dataset.loc, qty: Number(inp.value || 0) }));
     const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: gv('note'), jobCode: gv('jobCode') };
     try {
-      await apiPOST(payload);
+      await submitOrQueue(payload, 'Counts saved');
       prependRecent(`${tech} counted ${partId} (${company})`);
-      toast('Counts saved');
-      el('countPanel')?.classList.add('hidden');
+      closePanel('panelCount');
     } catch (e) { alert('Save failed: ' + e.message); }
   });
 
-  // === Backorder (prompt mini-form + toast) ===
-  el('btnBackorder')?.addEventListener('click', async ()=>{
-    let partId = gv('partId');
-    if (!partId){
-      const p = prompt('PartID to backorder:','');
-      partId = p ? p.trim() : '';
-    }
+  /* ====================== TOOLS: BACKORDER ====================== */
+  el('btnBackorder')?.addEventListener('click', ()=>{
+    openPanel('panelBackorder');
+    // Prefill from top fields if present
+    const topPart = gv('partId'); // optional if you had one
+    if (topPart) el('boPartId').value = topPart;
+    const topCat = gv('company');
+    if (topCat) el('boCategory').value = topCat;
+    el('boPartId')?.focus();
+  });
+  el('btnCloseBackorder')?.addEventListener('click', ()=> closePanel('panelBackorder'));
+
+  // Auto-fill boCategory on PartID change
+  el('boPartId')?.addEventListener('change', async (e)=>{
+    const pid = (e.target.value||'').trim();
+    if (!pid) return;
+    const cat = await autoCat(pid);
+    if (cat && el('boCategory') && !el('boCategory').value) el('boCategory').value = cat;
+  });
+
+  el('btnSubmitBackorder')?.addEventListener('click', async ()=>{
+    const partId = gv('boPartId');
+    let company = gv('boCategory');
+    const qtyStr = gv('boQty') || '1';
+    const expected = gv('boExpected') ? String(Date.parse(gv('boExpected'))) : '';
+    const note = gv('boNote');
+
     if (!partId){ alert('PartID required.'); return; }
-
-    let company = gv('company');
     if (!company){ company = await autoCat(partId); }
-    if (!company){
-      const c = prompt('Category (e.g. BUNN):','');
-      company = c ? c.trim() : '';
-    }
     if (!company){ alert('Category required.'); return; }
-
-    const qtyPrompt = prompt('Backorder quantity?','1');
-    if (qtyPrompt === null) return;
-    const qtyStr = qtyPrompt.trim();
-    if (!qtyStr) return;
-    const exp = prompt('Expected date? (optional YYYY-MM-DD)');
-    const expected = exp ? String(Date.parse(exp)) : '';
 
     const payload = {
       kind: 'backorder',
@@ -505,35 +560,59 @@ window.addEventListener('DOMContentLoaded', async () => {
       qty: String(parseFloat(qtyStr) || 0),
       requestedBy: gv('tech'),
       expectedDate: expected,
-      note: gv('note'),
+      note,
       requestId: (crypto.randomUUID ? crypto.randomUUID() : 'bo-' + Date.now()),
     };
-    try {
-      await apiPOST(payload);
+    try{
+      await submitOrQueue(payload, 'Backorder submitted');
       prependRecent(`backorder ${payload.qty} × ${payload.partId} (${company})`);
-      toast('Backorder submitted');
-    } catch (e) { alert('Backorder failed: ' + e.message); }
+      closePanel('panelBackorder');
+      // clear small form
+      if (el('boQty')) el('boQty').value = '';
+      if (el('boExpected')) el('boExpected').value = '';
+      if (el('boNote')) el('boNote').value = '';
+    }catch(e){
+      alert('Backorder failed: '+e.message);
+    }
   });
 
-  // === History panel (tech/company/part filters) ===
+  /* ======================= TOOLS: HISTORY ======================= */
+  // Open History panel
   el('btnHistory')?.addEventListener('click', async ()=>{
-    if (el('historyCompany')) el('historyCompany').value = gv('company');
+    openPanel('panelHistory');               // FIX: matches HTML id
     await loadTechs();
-    el('historyPanel')?.classList.remove('hidden');
+    showHistFields(gv('histFilter') || 'tech');
   });
-  el('historyClose')?.addEventListener('click', ()=> el('historyPanel')?.classList.add('hidden'));
+  el('historyClose')?.addEventListener('click', ()=> closePanel('panelHistory'));
+
+  // Toggle contextual fields by filter
+  el('histFilter')?.addEventListener('change', (e)=>{
+    showHistFields(e.target.value);
+  });
+
+  // Load history (flexible)
   el('historyLoad')?.addEventListener('click', async ()=>{
-    const tech = gv('historyTech');
-    if (!tech){ alert('Pick a technician'); return; }
-    const params = {
-      tech,
-      company: gv('historyCompany'),
-      partId:  gv('historyPart'),
-      limit:   String(parseInt(gv('historyLimit') || '100'))
-    };
+    const by = gv('histFilter') || 'tech';
+    const limit = String(parseInt(gv('historyLimit') || '100'));
+    const params = { limit };
+
+    if (by === 'tech') params.tech = gv('historyTech');
+    if (by === 'daterange') {
+      params.start = gv('historyStart');
+      params.end   = gv('historyEnd');
+    }
+    if (by === 'category') params.category = gv('historyCategory');
+    if (by === 'part')     params.partId   = gv('historyPart');
+    if (by === 'job')      params.jobCode  = gv('historyJob');
+
+    // Prefer flexible route; falls back to tech-only route
     try{
-      // Flexible route available in Code.gs as historySearch; keeping simple tech route:
-      const j = await apiGET('history', params);
+      let j;
+      if (by === 'tech' && !params.start && !params.category && !params.partId && !params.jobCode){
+        j = await apiGET('history', { tech: params.tech, limit: params.limit });
+      } else {
+        j = await apiGET('historySearch', params);
+      }
       renderHistory(j.items||[]);
     }catch(e){
       alert('Failed to load history: '+e.message);
@@ -552,8 +631,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (voidId){
       if (!confirmDelete(whenStr)) return;
       try{
-        await apiPOST({ kind:'void', requestId: voidId, tech: gv('tech') });
-        toast('Submission voided');
+        await submitOrQueue({ kind:'void', requestId: voidId, tech: gv('tech') }, 'Submission voided');
         el('historyLoad')?.click();
       }catch(err){ alert('Delete failed: '+err.message); }
       return;
@@ -581,12 +659,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       const note = n ? n.trim() : '';
 
       try{
-        await apiPOST({ kind:'edit',
+        await submitOrQueue({ kind:'edit',
           requestId: editId,
           tech: gv('tech'),
           action, fromLoc, toLoc, qty, note, jobCode: gv('jobCode')
-        });
-        toast('Submission corrected');
+        }, 'Submission corrected');
         el('historyLoad')?.click();
       }catch(err){ alert('Edit failed: '+err.message); }
     }
