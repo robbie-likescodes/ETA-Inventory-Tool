@@ -50,20 +50,22 @@
           </div>
         </div>
 
-        <table id="bulkTable" style="width:100%;border-collapse:collapse;margin-top:8px">
-          <thead>
-            <tr>
-              <th style="text-align:left;padding:8px">PartID</th>
-              <th style="text-align:left;padding:8px">Category</th>
-              <th style="text-align:left;padding:8px">Action</th>
-              <th style="text-align:left;padding:8px">From</th>
-              <th style="text-align:left;padding:8px">To</th>
-              <th style="text-align:right;padding:8px">Qty</th>
-              <th style="padding:8px"></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div id="bulkWrap" style="overflow-x:auto">
+          <table id="bulkTable" style="width:100%;border-collapse:collapse;margin-top:8px;min-width:640px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:8px;min-width:120px">PartID</th>
+                <th style="text-align:left;padding:8px;min-width:120px">Category</th>
+                <th style="text-align:left;padding:8px;min-width:110px">Action</th>
+                <th style="text-align:left;padding:8px;min-width:110px">From</th>
+                <th style="text-align:left;padding:8px;min-width:110px">To</th>
+                <th style="text-align:right;padding:8px;min-width:90px">Qty</th>
+                <th style="padding:8px;min-width:60px"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
         <div class="row" style="margin-top:8px">
           <label>Note
@@ -72,7 +74,7 @@
         </div>
       </section>
 
-      <!-- Tools (Count / Backorder / History) -->
+      <!-- Tools -->
       <section class="card">
         <div class="split">
           <strong>Tools</strong>
@@ -82,25 +84,22 @@
             <button id="btnHistory" type="button">History</button>
           </div>
         </div>
-        <div class="row" style="margin-top:8px">
-          <label>PartID (for Count / Backorder)
-            <input id="partId" list="partsList" placeholder="Type or scan PartID" />
-            <datalist id="partsList"></datalist>
-          </label>
-          <label>Category (optional)
-            <!-- Top-level fallback category if a row leaves Category blank -->
-            <input id="company" list="catsList" placeholder="e.g. BUNN" />
-            <datalist id="catsList"></datalist>
-          </label>
-        </div>
+        <!-- no default inputs here; panels below handle UX -->
       </section>
 
-      <!-- Count Mode -->
-      <section id="countPanel" class="card hidden">
+      <!-- Count Mode (PartID only) -->
+      <section id="panelCount" class="card hidden">
         <div class="split">
           <strong>Count Part (set absolute quantities)</strong>
           <button id="btnCloseCount" type="button">Close</button>
         </div>
+
+        <div class="row" style="margin-top:8px">
+          <label>PartID
+            <input id="countPartId" list="partsList" placeholder="Type or scan PartID" />
+          </label>
+        </div>
+
         <div id="countMeta" class="muted small"></div>
         <table id="countTable" style="width:100%;border-collapse:collapse;margin-top:8px"></table>
         <div class="row" style="margin-top:8px">
@@ -108,33 +107,100 @@
         </div>
       </section>
 
-      <!-- History by Technician -->
-      <section id="historyPanel" class="card hidden">
+      <!-- Backorder -->
+      <section id="panelBackorder" class="card hidden">
         <div class="split">
-          <strong>History by Technician</strong>
+          <strong>Backorder</strong>
+          <button id="btnCloseBackorder" type="button">Close</button>
+        </div>
+
+        <div class="row">
+          <label>PartID
+            <input id="boPartId" list="partsList" placeholder="Select PartID" />
+          </label>
+          <label>Category
+            <input id="boCategory" list="catsList" placeholder="e.g. BUNN" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Quantity
+            <input id="boQty" type="number" min="1" step="1" placeholder="1" />
+          </label>
+          <label>Expected (optional)
+            <input id="boExpected" type="date" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Note (optional)
+            <input id="boNote" placeholder="comment" />
+          </label>
+        </div>
+
+        <div class="row">
+          <button id="btnSubmitBackorder" type="button">Submit Backorder</button>
+        </div>
+      </section>
+
+      <!-- History (Filter By …) -->
+      <section id="panelHistory" class="card hidden">
+        <div class="split">
+          <strong>History</strong>
           <button id="historyClose" type="button">Close</button>
         </div>
 
         <div class="row">
-          <label>Technician
-            <select id="historyTech"></select>
-          </label>
-          <label>Category (optional)
-            <input id="historyCompany" placeholder="e.g. BUNN" />
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Filter PartID (optional)
-            <input id="historyPart" placeholder="e.g. 639458345" />
+          <label>Filter by
+            <select id="histFilter">
+              <option value="tech">Technician</option>
+              <option value="daterange">Date range</option>
+              <option value="category">Category</option>
+              <option value="part">Part ID</option>
+              <option value="job">Job Code</option>
+            </select>
           </label>
           <label>Max rows
             <input id="historyLimit" type="number" min="10" step="10" value="100" />
           </label>
         </div>
 
+        <!-- Contextual fields (JS will show/hide by filter) -->
+        <div class="row" id="histFieldTech">
+          <label>Technician
+            <select id="historyTech"></select>
+          </label>
+        </div>
+
+        <div class="row hidden" id="histFieldDate">
+          <label>Start
+            <input id="historyStart" type="date" />
+          </label>
+          <label>End
+            <input id="historyEnd" type="date" />
+          </label>
+        </div>
+
+        <div class="row hidden" id="histFieldCategory">
+          <label>Category
+            <input id="historyCategory" list="catsList" placeholder="e.g. BUNN" />
+          </label>
+        </div>
+
+        <div class="row hidden" id="histFieldPart">
+          <label>PartID
+            <input id="historyPart" list="partsList" placeholder="e.g. 639458345" />
+          </label>
+        </div>
+
+        <div class="row hidden" id="histFieldJob">
+          <label>Job Code
+            <input id="historyJob" placeholder="e.g. ETA-509" />
+          </label>
+        </div>
+
         <div class="row">
-          <button id="historyLoad" type="button">Load History</button>
+          <button id="historyLoad" type="button">Load</button>
         </div>
 
         <div id="historyList" style="margin-top:8px"></div>
@@ -151,6 +217,13 @@
   <footer>
     <small>v1 • <span id="statusChip">Ready</span></small>
   </footer>
+
+  <!-- Global datalists -->
+  <datalist id="partsList"></datalist>
+  <datalist id="catsList"></datalist>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
 </body>
