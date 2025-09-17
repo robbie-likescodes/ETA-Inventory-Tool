@@ -348,3 +348,45 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* Smooth scrolling for long history */
 html { scroll-behavior:smooth; }
+
+/* ---------- Sliding Panels ---------- */
+#panelCount,
+#panelBackorder,
+#panelHistory {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateY(-8px);
+  transition: max-height .35s ease, opacity .25s ease, transform .35s ease;
+}
+
+/* visible state */
+#panelCount.show,
+#panelBackorder.show,
+#panelHistory.show {
+  max-height: 1200px; /* enough to fit contents */
+  opacity: 1;
+  transform: translateY(0);
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+/* hide with smooth collapse */
+#panelCount.hidden,
+#panelBackorder.hidden,
+#panelHistory.hidden {
+  max-height: 0 !important;
+  opacity: 0 !important;
+  margin: 0 !important;
+  transform: translateY(-8px);
+}
+
+/* Keep card styling when expanded */
+#panelCount,
+#panelBackorder,
+#panelHistory {
+  border:1px solid var(--stroke);
+  background:var(--card);
+  border-radius:12px;
+  padding:12px;
+}
