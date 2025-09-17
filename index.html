@@ -84,11 +84,10 @@
             <button id="btnHistory" type="button">History</button>
           </div>
         </div>
-        <!-- no default inputs here; panels below handle UX -->
       </section>
 
-      <!-- Count Mode (PartID only) -->
-      <section id="panelCount" class="card hidden">
+      <!-- Count Mode -->
+      <section id="countPanel" class="card hidden">
         <div class="split">
           <strong>Count Part (set absolute quantities)</strong>
           <button id="btnCloseCount" type="button">Close</button>
@@ -143,8 +142,8 @@
         </div>
       </section>
 
-      <!-- History (Filter By …) -->
-      <section id="panelHistory" class="card hidden">
+      <!-- History -->
+      <section id="historyPanel" class="card hidden">
         <div class="split">
           <strong>History</strong>
           <button id="historyClose" type="button">Close</button>
@@ -165,7 +164,7 @@
           </label>
         </div>
 
-        <!-- Contextual fields (JS will show/hide by filter) -->
+        <!-- Contextual fields -->
         <div class="row" id="histFieldTech">
           <label>Technician
             <select id="historyTech"></select>
