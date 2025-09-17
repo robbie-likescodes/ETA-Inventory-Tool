@@ -50,7 +50,7 @@
           </div>
         </div>
 
-        <div id="bulkWrap" style="overflow-x:auto">
+        <div id="bulkWrap">
           <table id="bulkTable" style="width:100%;border-collapse:collapse;margin-top:8px;min-width:640px">
             <thead>
               <tr>
@@ -84,10 +84,11 @@
             <button id="btnHistory" type="button">History</button>
           </div>
         </div>
+        <!-- Panels below handle UX -->
       </section>
 
-      <!-- Count Mode -->
-      <section id="countPanel" class="card hidden">
+      <!-- Count Mode (PartID only) -->
+      <section id="panelCount" class="card hidden">
         <div class="split">
           <strong>Count Part (set absolute quantities)</strong>
           <button id="btnCloseCount" type="button">Close</button>
@@ -142,8 +143,8 @@
         </div>
       </section>
 
-      <!-- History -->
-      <section id="historyPanel" class="card hidden">
+      <!-- History (Filter By …) -->
+      <section id="panelHistory" class="card hidden">
         <div class="split">
           <strong>History</strong>
           <button id="historyClose" type="button">Close</button>
@@ -164,7 +165,7 @@
           </label>
         </div>
 
-        <!-- Contextual fields -->
+        <!-- Contextual fields (JS will show/hide by filter) -->
         <div class="row" id="histFieldTech">
           <label>Technician
             <select id="historyTech"></select>
@@ -221,8 +222,8 @@
   <datalist id="partsList"></datalist>
   <datalist id="catsList"></datalist>
 
-  <!-- Toast -->
-  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <!-- Toast (JS will reuse or create if missing) -->
+  <div class="toast" role="status" aria-live="polite"></div>
 
   <script src="app.js"></script>
 </body>
