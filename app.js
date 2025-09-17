@@ -20,6 +20,7 @@ const K = {
 };
 
 const el = (id) => document.getElementById(id);
+const gv = (id) => (el(id)?.value || '').trim(); // safe getter for values
 
 /* ---------------- Toast ---------------- */
 function ensureToastHost(){
@@ -70,13 +71,13 @@ function qSet(items) { LS.set(K.queue, items); }
 async function flushQueue() {
   const q = qAll();
   if (!q.length || !navigator.onLine) return;
-  el('sync').textContent = 'Sync: flushing…';
+  el('sync') && (el('sync').textContent = 'Sync: flushing…');
   const keep = [];
   for (const item of q) {
     try { await apiPOST(item); } catch { keep.push(item); }
   }
   qSet(keep);
-  el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle';
+  el('sync') && (el('sync').textContent = keep.length ? `Sync: retrying (${keep.length})` : 'Sync: idle');
 }
 
 /* ---------------- Auth ---------------- */
@@ -160,9 +161,10 @@ function bulkRowHtml(){
 
 // Enforce Use/Receive/Move per row (To=N/A for used, From=N/A for received)
 function enforceRowAction(tr){
-  const action = tr.querySelector('[data-field="action"]').value;
+  const action = tr.querySelector('[data-field="action"]')?.value || 'used';
   const fromSel = tr.querySelector('[data-field="fromLoc"]');
   const toSel   = tr.querySelector('[data-field="toLoc"]');
+  if (!fromSel || !toSel) return;
 
   if (action === 'used') {
     if (!fromSel.value || fromSel.value === 'N/A') fromSel.value = '';
@@ -207,18 +209,19 @@ function renderCountTable(row) {
 function prependRecent(text) {
   const li = document.createElement('li');
   li.textContent = text;
-  el('recent').prepend(li);
+  el('recent')?.prepend(li);
 }
 
 /* ---------------- History (list + edit/void) ---------------- */
 async function loadTechs(){
   const sel = el('historyTech');
+  if (!sel) return;
   sel.disabled = true;
   sel.innerHTML = '<option value="">(loading…)</option>';
   try{
     const j = await apiGET('techs');
     let techs = j.techs || [];
-    const me = (el('tech').value||'').trim();
+    const me = gv('tech');
     if (me && !techs.includes(me)) techs = [me, ...techs];
     sel.innerHTML = techs.length
       ? techs.map(t=>`<option>${t}</option>`).join('')
@@ -232,6 +235,7 @@ async function loadTechs(){
   }
 }
 function renderHistory(items){
+  if (!el('historyList')) return;
   if (!items || !items.length){
     el('historyList').innerHTML = `<div class="muted small">No records.</div>`;
     return;
@@ -271,19 +275,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Login gate
   if (isAuthed()) {
-    el('gate').classList.add('hidden');
-    el('app').classList.remove('hidden');
+    el('gate')?.classList.add('hidden');
+    el('app')?.classList.remove('hidden');
   }
-  el('loginForm').addEventListener('submit', async (e) => {
+  el('loginForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    el('loginMsg').textContent = '';
-    const pin = el('pin').value.trim();
+    if (el('loginMsg')) el('loginMsg').textContent = '';
+    const pin = gv('pin');
     try {
       await login(pin);
-      el('gate').classList.add('hidden');
-      el('app').classList.remove('hidden');
+      el('gate')?.classList.add('hidden');
+      el('app')?.classList.remove('hidden');
     } catch (err) {
-      el('loginMsg').textContent = 'Incorrect PIN or server error.';
+      if (el('loginMsg')) el('loginMsg').textContent = 'Incorrect PIN or server error.';
     }
   });
 
@@ -292,8 +296,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const compInput = el('company'); // "Category (optional)" at top Tools row
   if (techInput) techInput.value = LS.get(K.tech, '');
   if (compInput) compInput.value = LS.get(K.company, '');
-  if (techInput) techInput.addEventListener('change', () => LS.set(K.tech, techInput.value.trim()));
-  if (compInput) compInput.addEventListener('change', () => LS.set(K.company, compInput.value.trim()));
+  techInput?.addEventListener('change', () => LS.set(K.tech, gv('tech')));
+  compInput?.addEventListener('change', () => LS.set(K.company, gv('company')));
 
   // Load lists
   await loadLocs();
@@ -301,18 +305,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadCats();
 
   // Seed one empty bulk row by default
-  el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
-  Array.from(el('bulkTable').querySelectorAll('tbody tr')).forEach(enforceRowAction);
+  el('bulkTable')?.querySelector('tbody')?.insertAdjacentHTML('beforeend', bulkRowHtml());
+  Array.from(el('bulkTable')?.querySelectorAll('tbody tr') || []).forEach(enforceRowAction);
 
   // === Bulk behaviors ===
-  el('bulkAdd').addEventListener('click', ()=>{
-    el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
+  el('bulkAdd')?.addEventListener('click', ()=>{
+    const tb = el('bulkTable')?.querySelector('tbody');
+    if (!tb) return;
+    tb.insertAdjacentHTML('beforeend', bulkRowHtml());
     const tr = el('bulkTable').querySelector('tbody tr:last-child');
     enforceRowAction(tr);
   });
 
   // Per-row logic
-  el('bulkTable').addEventListener('change', async (e)=>{
+  el('bulkTable')?.addEventListener('change', async (e)=>{
     const tr = e.target.closest('tr');
     if (!tr) return;
 
@@ -324,25 +330,23 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Auto-fill Category when a PartID is chosen
     if (e.target.matches('[data-field="partId"]')){
-      const partId = e.target.value.trim();
+      const partId = (e.target.value || '').trim();
       const rowCat = tr.querySelector('[data-field="company"]');
       if (partId && rowCat && !rowCat.value){
         const cat = await autoCat(partId);
         if (cat) rowCat.value = cat;
-        // If top-level category is empty, also set it to help Count/Backorder defaults
         if (compInput && !compInput.value && cat) {
           compInput.value = cat;
           LS.set(K.company, cat);
         }
       }
-      // If still blank, copy from the top field as a fallback
       if (rowCat && !rowCat.value && compInput && compInput.value){
         rowCat.value = compInput.value;
       }
     }
   });
 
-  el('bulkTable').addEventListener('click', (e)=>{
+  el('bulkTable')?.addEventListener('click', (e)=>{
     if (e.target.dataset.action==='remove'){
       const tr = e.target.closest('tr'); if (tr) tr.remove();
     }
@@ -350,16 +354,18 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Submit All — idempotent via unique requestId per line + UI guard
   let submitting = false;
-  const btnSubmit = document.getElementById('bulkSubmit');
-  el('bulkSubmit').addEventListener('click', async ()=>{
+  const btnSubmit = el('bulkSubmit');
+  btnSubmit?.addEventListener('click', async ()=>{
     if (submitting) return;
-    const tech    = (el('tech').value||'').trim();
+    const tech = gv('tech');
     if (!tech){ alert('Technician is required.'); return; }
 
-    const rows = Array.from(el('bulkTable').querySelectorAll('tbody tr'));
+    const rows = Array.from(el('bulkTable')?.querySelectorAll('tbody tr') || []);
     if (!rows.length){ alert('Add at least one line.'); return; }
 
-    const defaultCat = (el('company').value || '').trim();
+    const defaultCat = gv('company');
+    const jobCode = gv('jobCode');
+    const note = gv('note');
 
     const items = rows.map(tr=>{
       const get = name => { const n = tr.querySelector(`[data-field="${name}"]`); return n ? n.value : ''; };
@@ -386,15 +392,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         partId: (get('partId')||'').trim(),
         qty: String(parseFloat(get('qty')||'0')||0),
         fromLoc, toLoc,
-        jobCode: el('jobCode').value.trim(),
-        note: el('note').value.trim(),
+        jobCode,
+        note,
         requestId: (crypto.randomUUID ? crypto.randomUUID() : 'r-'+Date.now()+Math.random().toString(16).slice(2))
       };
     }).filter(it => it.company && it.partId && parseFloat(it.qty)>0);
 
     if (!items.length){ alert('Each row needs Category, PartID and Qty.'); return; }
 
-    // Validate action-specific requirements
     for (const it of items){
       if (it.action==='used'    && !it.fromLoc){ alert(`Row ${it.partId}: select FROM location.`); return; }
       if (it.action==='received'&& !it.toLoc){   alert(`Row ${it.partId}: select TO location.`);   return; }
@@ -402,15 +407,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     submitting = true;
-    btnSubmit.disabled = true;
+    if (btnSubmit) btnSubmit.disabled = true;
     try{
       await apiPOST({ kind:'batch', items: JSON.stringify(items) });
       items.forEach(it => prependRecent(`${it.company}: ${it.tech} ${it.action} ${it.qty} × ${it.partId} (${it.fromLoc||'—'}→${it.toLoc||'—'})`));
       // reset form
-      el('bulkTable').querySelector('tbody').innerHTML = '';
-      el('bulkTable').querySelector('tbody').insertAdjacentHTML('beforeend', bulkRowHtml());
-      enforceRowAction(el('bulkTable').querySelector('tbody tr:last-child'));
-      el('note').value = '';
+      const tb = el('bulkTable')?.querySelector('tbody');
+      if (tb){
+        tb.innerHTML = '';
+        tb.insertAdjacentHTML('beforeend', bulkRowHtml());
+        enforceRowAction(el('bulkTable').querySelector('tbody tr:last-child'));
+      }
+      if (el('note')) el('note').value = '';
       toast('Parts submitted successfully');
       await flushQueue();
       await loadParts();
@@ -419,14 +427,18 @@ window.addEventListener('DOMContentLoaded', async () => {
       alert('Bulk submit failed: '+e.message);
     }finally{
       submitting = false;
-      btnSubmit.disabled = false;
+      if (btnSubmit) btnSubmit.disabled = false;
     }
   });
 
   // === Count Mode ===
-  el('btnCount').addEventListener('click', async ()=>{
-    let company = (el('company').value||'').trim();
-    const partId  = (el('partId').value||'').trim() || prompt('Enter PartID to count:','').trim();
+  el('btnCount')?.addEventListener('click', async ()=>{
+    let company = gv('company');
+    let partId = gv('partId');
+    if (!partId){
+      const p = prompt('Enter PartID to count:','');
+      partId = p ? p.trim() : '';
+    }
     if (!partId){ alert('PartID required.'); return; }
     if (!company){
       company = await autoCat(partId);
@@ -439,51 +451,61 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const j = await apiGET('part', { company, partId });
-      el('countMeta').textContent = `${company} — ${partId}`;
+      el('countMeta') && (el('countMeta').textContent = `${company} — ${partId}`);
       renderCountTable(j.row || {});
-      el('countPanel').classList.remove('hidden');
+      el('countPanel')?.classList.remove('hidden');
     } catch (e) { alert('Could not load part row: ' + e.message); }
   });
-  el('btnCloseCount').addEventListener('click', ()=> el('countPanel').classList.add('hidden'));
+  el('btnCloseCount')?.addEventListener('click', ()=> el('countPanel')?.classList.add('hidden'));
 
-  el('btnSaveCounts').addEventListener('click', async ()=>{
-    const company = (el('company').value||'').trim();
-    const partId  = (el('partId').value||'').trim();
-    const tech    = (el('tech').value||'').trim();
+  el('btnSaveCounts')?.addEventListener('click', async ()=>{
+    const company = gv('company');
+    const partId  = gv('partId');
+    const tech    = gv('tech');
     if (!company || !partId || !tech) { alert('Category, PartID, Tech required.'); return; }
-    const inputs = Array.from(el('countTable').querySelectorAll('input[data-loc]'));
+    const inputs = Array.from(el('countTable')?.querySelectorAll('input[data-loc]') || []);
     const rows = inputs.map(inp => ({ locId: inp.dataset.loc, qty: Number(inp.value || 0) }));
-    const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: el('note').value.trim(), jobCode: el('jobCode').value.trim() };
+    const payload = { kind:'count', company, tech, partId, counts: JSON.stringify(rows), note: gv('note'), jobCode: gv('jobCode') };
     try {
       await apiPOST(payload);
       prependRecent(`${tech} counted ${partId} (${company})`);
       toast('Counts saved');
-      el('countPanel').classList.add('hidden');
+      el('countPanel')?.classList.add('hidden');
     } catch (e) { alert('Save failed: ' + e.message); }
   });
 
   // === Backorder (prompt mini-form + toast) ===
-  el('btnBackorder').addEventListener('click', async ()=>{
-    let partId = (el('partId').value||'').trim();
-    if (!partId){ partId = (prompt('PartID to backorder:','')||'').trim(); }
+  el('btnBackorder')?.addEventListener('click', async ()=>{
+    let partId = gv('partId');
+    if (!partId){
+      const p = prompt('PartID to backorder:','');
+      partId = p ? p.trim() : '';
+    }
     if (!partId){ alert('PartID required.'); return; }
 
-    let company = (el('company').value||'').trim();
+    let company = gv('company');
     if (!company){ company = await autoCat(partId); }
-    if (!company){ company = (prompt('Category (e.g. BUNN):','')||'').trim(); }
+    if (!company){
+      const c = prompt('Category (e.g. BUNN):','');
+      company = c ? c.trim() : '';
+    }
     if (!company){ alert('Category required.'); return; }
 
-    const qtyStr = prompt('Backorder quantity?','1'); if (!qtyStr) return;
-    const expected = prompt('Expected date? (optional YYYY-MM-DD)');
+    const qtyPrompt = prompt('Backorder quantity?','1');
+    if (qtyPrompt === null) return;
+    const qtyStr = qtyPrompt.trim();
+    if (!qtyStr) return;
+    const exp = prompt('Expected date? (optional YYYY-MM-DD)');
+    const expected = exp ? String(Date.parse(exp)) : '';
 
     const payload = {
       kind: 'backorder',
       company,
       partId,
       qty: String(parseFloat(qtyStr) || 0),
-      requestedBy: (el('tech').value||'').trim(),
-      expectedDate: expected ? String(Date.parse(expected)) : '',
-      note: el('note').value.trim(),
+      requestedBy: gv('tech'),
+      expectedDate: expected,
+      note: gv('note'),
       requestId: (crypto.randomUUID ? crypto.randomUUID() : 'bo-' + Date.now()),
     };
     try {
@@ -494,24 +516,23 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   // === History panel (tech/company/part filters) ===
-  el('btnHistory').addEventListener('click', async ()=>{
-    el('historyCompany').value = el('company').value;
+  el('btnHistory')?.addEventListener('click', async ()=>{
+    if (el('historyCompany')) el('historyCompany').value = gv('company');
     await loadTechs();
-    el('historyPanel').classList.remove('hidden');
+    el('historyPanel')?.classList.remove('hidden');
   });
-  el('historyClose').addEventListener('click', ()=> el('historyPanel').classList.add('hidden'));
-  el('historyLoad').addEventListener('click', async ()=>{
-    const tech = el('historyTech').value;
+  el('historyClose')?.addEventListener('click', ()=> el('historyPanel')?.classList.add('hidden'));
+  el('historyLoad')?.addEventListener('click', async ()=>{
+    const tech = gv('historyTech');
     if (!tech){ alert('Pick a technician'); return; }
     const params = {
       tech,
-      company: (el('historyCompany').value||'').trim(),
-      partId:  (el('historyPart').value||'').trim(),
-      limit:   String(parseInt(el('historyLimit').value||100))
+      company: gv('historyCompany'),
+      partId:  gv('historyPart'),
+      limit:   String(parseInt(gv('historyLimit') || '100'))
     };
     try{
-      // If you decide to switch to the flexible route later:
-      // const j = await apiGET('historySearch', params);
+      // Flexible route available in Code.gs as historySearch; keeping simple tech route:
       const j = await apiGET('history', params);
       renderHistory(j.items||[]);
     }catch(e){
@@ -520,7 +541,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   // History edit/void with confirmations
-  el('historyList').addEventListener('click', async (e)=>{
+  el('historyList')?.addEventListener('click', async (e)=>{
     const editId = e.target.dataset.edit;
     const voidId = e.target.dataset.void;
     if (!editId && !voidId) return;
@@ -531,38 +552,42 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (voidId){
       if (!confirmDelete(whenStr)) return;
       try{
-        await apiPOST({ kind:'void', requestId: voidId, tech: (el('tech').value||'').trim() });
+        await apiPOST({ kind:'void', requestId: voidId, tech: gv('tech') });
         toast('Submission voided');
-        el('historyLoad').click();
+        el('historyLoad')?.click();
       }catch(err){ alert('Delete failed: '+err.message); }
       return;
     }
 
     if (editId){
       if (!confirmChange(whenStr)) return;
-      const action = prompt('Action (used, received, moved):','used'); if (!action) return;
+      const a = prompt('Action (used, received, moved):','used');
+      const action = a ? a.trim() : '';
+      if (!action) return;
       let fromLoc = '', toLoc = '';
       if (action==='used'){
-        fromLoc = prompt('From location (required):','');
+        const f = prompt('From location (required):',''); fromLoc = f ? f.trim() : '';
         toLoc = 'N/A';
       } else if (action==='received'){
         fromLoc = 'N/A';
-        toLoc = prompt('To location (required):','');
+        const t = prompt('To location (required):',''); toLoc = t ? t.trim() : '';
       } else {
-        fromLoc = prompt('From location (required):','');
-        toLoc   = prompt('To location (required):','');
+        const f = prompt('From location (required):',''); fromLoc = f ? f.trim() : '';
+        const t = prompt('To location (required):','');   toLoc   = t ? t.trim() : '';
       }
-      const qty = prompt('Quantity:', '1'); if (!qty) return;
-      const note = prompt('Note (optional):','');
+      const q = prompt('Quantity:', '1'); if (q === null) return;
+      const qty = q.trim();
+      const n = prompt('Note (optional):','');
+      const note = n ? n.trim() : '';
 
       try{
         await apiPOST({ kind:'edit',
           requestId: editId,
-          tech: (el('tech').value||'').trim(),
-          action, fromLoc, toLoc, qty, note, jobCode: el('jobCode').value.trim()
+          tech: gv('tech'),
+          action, fromLoc, toLoc, qty, note, jobCode: gv('jobCode')
         });
         toast('Submission corrected');
-        el('historyLoad').click();
+        el('historyLoad')?.click();
       }catch(err){ alert('Edit failed: '+err.message); }
     }
   });
