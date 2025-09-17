@@ -61,6 +61,7 @@ button,
 textarea {
   width:100%;
   padding:12px;
+  min-height:44px; /* touch target */
   border-radius:10px;
   border:1px solid var(--stroke);
   background:var(--card);
@@ -134,6 +135,7 @@ button.small {
   display:flex;
   gap:8px;
   align-items:center;
+  flex-wrap:wrap; /* mobile friendly */
 }
 
 /* Recent list */
@@ -161,6 +163,8 @@ footer {
 }
 
 /* ---------- Multi-Entry Table ---------- */
+#bulkWrap { overflow-x:auto; }
+
 #bulkTable {
   width:100%;
   border-collapse:separate;
@@ -168,6 +172,7 @@ footer {
   border:1px solid var(--stroke);
   border-radius:12px;
   overflow:hidden;
+  min-width:640px; /* allow horizontal scroll on tiny screens */
 }
 
 #bulkTable thead th {
@@ -176,7 +181,7 @@ footer {
   letter-spacing:.02em;
   text-transform:uppercase;
   color:var(--muted);
-  background: #13141a;
+  background:#13141a;
   border-bottom:1px solid var(--stroke);
 }
 
@@ -184,7 +189,9 @@ footer {
 #bulkTable td {
   padding:8px;
   vertical-align:middle;
+  min-width:104px; /* keep columns readable */
 }
+#bulkTable td.qty { min-width:80px; }
 
 #bulkTable tbody tr + tr td { border-top:1px solid var(--stroke); }
 
@@ -195,8 +202,8 @@ footer {
   padding:10px;
   border-radius:8px;
   border:1px solid var(--stroke);
-  background: #121319;
-  color: var(--fg);
+  background:#121319;
+  color:var(--fg);
 }
 
 #bulkTable button[data-action="remove"] {
@@ -278,6 +285,32 @@ input[type="number"] { -moz-appearance: textfield; }
   background: rgba(61, 220, 151, .12);
 }
 
+/* ---------- Toast ---------- */
+.toast {
+  position:fixed;
+  left:50%;
+  bottom:16px;
+  transform:translateX(-50%) translateY(24px);
+  background:#0f1116;
+  color:#e8e8e8;
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  padding:12px 14px;
+  min-width:220px;
+  max-width:90vw;
+  text-align:center;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index:9999;
+}
+.toast.show {
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+  pointer-events:auto;
+}
+
 /* ---------- Utility states ---------- */
 .badge-ok    { color:var(--ok); }
 .badge-warn  { color:var(--warning); }
@@ -291,21 +324,26 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* Make Close buttons look secondary */
 #btnCloseCount,
-#historyClose {
+#historyClose,
+#btnCloseBackorder {
   background:transparent;
   color:var(--muted);
   border:1px solid var(--stroke);
 }
 #btnCloseCount:hover,
-#historyClose:hover {
+#historyClose:hover,
+#btnCloseBackorder:hover {
   color:#fff;
   border-color: var(--brand);
 }
 
 /* Improve touch targets on mobile */
-@media (max-width:420px){
-  button { padding:12px 14px; }
-  button.small { padding:6px 8px; }
+@media (max-width:480px){
+  .card { padding:10px; }
+  header { padding:10px 12px; }
+  .split { grid-template-columns:1fr; gap:8px; }
+  .card .inline > button { min-width:unset; flex:1 1 auto; }
+  #bulkTable { min-width:580px; } /* still scrolls inside #bulkWrap */
 }
 
 /* Smooth scrolling for long history */
